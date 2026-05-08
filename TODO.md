@@ -5,6 +5,39 @@
 
 ---
 
+## Where you are right now (status as of 2026-05-09)
+
+**Done:**
+- ✅ Project scaffolded (Vite + React 19 + TS, Tailwind v4, dnd-kit, Formik+Yup, TanStack Query, React Router v7)
+- ✅ Git initialized, two commits on `main`: scaffold + Supabase setup
+- ✅ Supabase CLI installed; project linked (`project-ref msmmqvhuaottexqypcwa`)
+- ✅ Both migrations applied to remote (`0001_init.sql`, `0002_seed_columns.sql`)
+- ✅ TypeScript types generated from live schema → `src/lib/database.types.ts`
+- ✅ `.env` and `.dev.vars` created from template, project URL plugged in
+
+**Pending bootstrap (do these IN ORDER before starting any coding):**
+1. **Add anon key to `.env` and `.dev.vars`** — Supabase dashboard → Settings → API → "anon public". Paste into `VITE_SUPABASE_ANON_KEY` (in `.env`) and into `VITE_SUPABASE_ANON_KEY` + `SUPABASE_ANON_KEY` (in `.dev.vars`).
+2. **Create owner user via Supabase dashboard** — Authentication → Users → "Add user" → her email + password → check "Auto Confirm User". Copy the resulting `user_id` (UUID).
+3. **Insert firm row pointing to that user_id.** Either via Supabase SQL editor or `supabase db remote query`:
+   ```sql
+   insert into public.firms (name, owner_user_id)
+   values ('LD Biro', '<paste-the-user-id-here>');
+   ```
+   The `firms_seed_columns` trigger from migration 0002 will auto-create the 5 default kanban columns. Verify in Table Editor → `columns`.
+4. **Verify locally:** `bun run dev` → open `http://localhost:5173` → it'll redirect to `/app/tabla` showing the kanban with **mock data** (live data wiring is the next coding task).
+
+**Then start coding:** the immediate task is [#1 Wire authentication](#1-wire-authentication) so that the LoginPage actually lets her sign in, and `AppLayout` redirects to `/login` when there's no session. After that, the next task is [#2 Replace mock kanban data with live Supabase queries](#2-replace-mock-kanban-data-with-live-supabase-queries).
+
+**API keys still needed (not blocking until you start the voice flow):**
+- Groq API key → <https://console.groq.com> → save into both `GROQ_API_KEY` slots in `.dev.vars`
+- Gemini API key → <https://aistudio.google.com/apikey> → save into both `GEMINI_API_KEY` slots
+
+**Deploy not yet set up:**
+- Cloudflare Pages project not yet created. Do this only when you have something worth deploying (after auth + live kanban).
+- UptimeRobot/Cron-job.org daily ping not configured. Set up after deploy.
+
+---
+
 ## Project at a glance
 
 Voice-first ticket tracker for an interrupt-driven accounting workflow. Owner (Sasa's sister at LD Biro, Serbia) records voice notes after client calls; Whisper transcribes; Gemini parses into structured tickets; tickets land in a kanban with day-filtered focus view. Klijent firms (~70 active) get a portal where they can submit and track their own tickets.
@@ -52,24 +85,28 @@ Voice-first ticket tracker for an interrupt-driven accounting workflow. Owner (S
 
 ## One-time setup (pre-launch)
 
-Sasa needs to do these manually. None require code. Do not skip — voice pipeline cannot work without keys.
+Reference for the full bootstrap. Most of this is already done — see "Where you are right now" above for current status.
 
-1. **Supabase project**
-   - Create at <https://supabase.com> on Free tier
-   - SQL editor → paste & run `supabase/migrations/0001_init.sql`
-   - SQL editor → paste & run `supabase/migrations/0002_seed_columns.sql`
-   - Settings → API → copy `Project URL` and `anon public` key
-   - Settings → Authentication → Providers → enable Email (default), optionally Google
-   - **After migrations:** create the firm row manually (one-time):
+1. **Supabase project** — created via dashboard (Free tier), then linked locally:
+   - `brew install supabase/tap/supabase`
+   - `supabase login` (run in a real Terminal — non-TTY can't OAuth)
+   - `supabase init` in project root → creates `supabase/config.toml`
+   - `supabase link --project-ref <ref>`
+   - `supabase db push` → applies all migrations from `supabase/migrations/`
+   - `supabase gen types typescript --linked > src/lib/database.types.ts` → regenerate after any schema change
+   - Dashboard → Settings → Authentication → Providers → enable Email (default); Google OAuth deferred
+   - Dashboard → Authentication → Users → "Add user" with auto-confirm to create the owner user
+   - Dashboard → SQL Editor (or `supabase db remote query`):
      ```sql
-     -- Sasa's sister signs up first via the LoginPage, gets a user_id
-     -- Then run:
-     insert into public.firms (name, owner_user_id) values ('LD Biro', '<her-user-id>');
-     -- The trigger from 0002_seed_columns.sql auto-creates 5 default columns.
+     insert into public.firms (name, owner_user_id) values ('LD Biro', '<owner-user-id>');
      ```
-2. **Groq API key** — <https://console.groq.com> → API Keys → Create. Free tier ~2hr audio/day.
-3. **Gemini API key** — <https://aistudio.google.com/apikey> → Create. Free tier 1,500 req/day on Flash-Lite.
-4. **Local env:** `cp .env.example .env && cp .env.example .dev.vars`, fill keys in both.
+     The `firms_seed_columns` trigger creates the default 5 kanban columns automatically.
+2. **Groq API key** — <https://console.groq.com> → API Keys → Create. Free tier ~2hr audio/day. Goes into `GROQ_API_KEY` in `.dev.vars` (local) and Cloudflare Pages env (prod).
+3. **Gemini API key** — <https://aistudio.google.com/apikey> → Create. Free tier 1,500 req/day on Flash-Lite. Goes into `GEMINI_API_KEY` in same places.
+4. **Local env:** `cp .env.example .env && cp .env.example .dev.vars`, then fill in:
+   - `.env` is for Vite (only `VITE_*` keys are read; only those reach the browser bundle)
+   - `.dev.vars` is for `wrangler pages dev` (Pages Functions)
+   - Both are gitignored.
 5. **Cloudflare Pages:**
    - Connect Git repo
    - Build command `bun run build`, output dir `dist`
