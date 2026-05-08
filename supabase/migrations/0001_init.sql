@@ -1,13 +1,16 @@
 -- LD Biro Tracker · initial schema
 -- See data-model.md for the design rationale.
 
-create extension if not exists "uuid-ossp";
+-- pg_trgm is pre-installed in Supabase's `extensions` schema; the schema is on
+-- the search_path for the postgres / authenticated / anon roles, so `gin_trgm_ops`
+-- resolves without qualifying. uuid generation uses Postgres 13+ built-in
+-- `gen_random_uuid()`, no extension required.
 
 -- ============================================================================
 -- firms
 -- ============================================================================
 create table public.firms (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   name            text not null,
   owner_user_id   uuid not null references auth.users(id) on delete restrict,
   created_at      timestamptz not null default now()
@@ -19,7 +22,7 @@ create index firms_owner_idx on public.firms (owner_user_id);
 -- clients
 -- ============================================================================
 create table public.clients (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   firm_id         uuid not null references public.firms(id) on delete cascade,
   name            text not null,
   pib             text,
@@ -31,8 +34,8 @@ create table public.clients (
 );
 
 create index clients_firm_idx on public.clients (firm_id) where archived_at is null;
-create index clients_name_trgm_idx on public.clients using gin (name gin_trgm_ops);
-create extension if not exists pg_trgm;
+-- For 70-ish clients per firm, plain ILIKE is fine; no pg_trgm index needed.
+-- If client count grows or search feels slow, enable pg_trgm and add a GIN index here.
 
 -- ============================================================================
 -- client_memberships  (which user belongs to which klijent firma)
@@ -55,7 +58,7 @@ create index cm_user_idx on public.client_memberships (user_id) where accepted_a
 create type column_visibility as enum ('primljeno', 'u_radu', 'ceka_tebe', 'gotovo', 'hidden');
 
 create table public.columns (
-  id                       uuid primary key default uuid_generate_v4(),
+  id                       uuid primary key default gen_random_uuid(),
   firm_id                  uuid not null references public.firms(id) on delete cascade,
   name                     text not null,
   position                 integer not null,
@@ -71,7 +74,7 @@ create index columns_firm_pos_idx on public.columns (firm_id, position);
 create type cadence as enum ('monthly', 'quarterly', 'annually');
 
 create table public.recurrence_rules (
-  id                  uuid primary key default uuid_generate_v4(),
+  id                  uuid primary key default gen_random_uuid(),
   client_id           uuid not null references public.clients(id) on delete cascade,
   template_title      text not null,
   template_type       text not null default 'zaduzenje',
@@ -92,7 +95,7 @@ create type ticket_type as enum ('pitanje', 'zaduzenje', 'javicu_se');
 create type created_via_t as enum ('voice', 'manual', 'portal', 'recurring');
 
 create table public.tickets (
-  id                    uuid primary key default uuid_generate_v4(),
+  id                    uuid primary key default gen_random_uuid(),
   firm_id               uuid not null references public.firms(id) on delete cascade,
   client_id             uuid not null references public.clients(id) on delete cascade,
   column_id             uuid not null references public.columns(id) on delete restrict,
@@ -132,7 +135,7 @@ create trigger tickets_touch_updated
 -- comments
 -- ============================================================================
 create table public.comments (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   ticket_id    uuid not null references public.tickets(id) on delete cascade,
   user_id      uuid not null references auth.users(id) on delete restrict,
   body         text not null,
@@ -145,7 +148,7 @@ create index comments_ticket_idx on public.comments (ticket_id, created_at);
 -- attachments
 -- ============================================================================
 create table public.attachments (
-  id                    uuid primary key default uuid_generate_v4(),
+  id                    uuid primary key default gen_random_uuid(),
   ticket_id             uuid references public.tickets(id) on delete cascade,
   comment_id            uuid references public.comments(id) on delete cascade,
   file_url              text not null,
@@ -162,7 +165,7 @@ create index attachments_ticket_idx on public.attachments (ticket_id) where tick
 -- activity_log
 -- ============================================================================
 create table public.activity_log (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   ticket_id    uuid not null references public.tickets(id) on delete cascade,
   user_id      uuid not null references auth.users(id),
   action       text not null,
@@ -177,11 +180,11 @@ create index activity_ticket_idx on public.activity_log (ticket_id, created_at);
 -- invitations
 -- ============================================================================
 create table public.invitations (
-  id                   uuid primary key default uuid_generate_v4(),
+  id                   uuid primary key default gen_random_uuid(),
   client_id            uuid not null references public.clients(id) on delete cascade,
   email                text not null,
   invited_by_user_id   uuid not null references auth.users(id),
-  token                text not null unique default replace(uuid_generate_v4()::text, '-', ''),
+  token                text not null unique default replace(gen_random_uuid()::text, '-', ''),
   expires_at           timestamptz not null default now() + interval '14 days',
   accepted_at          timestamptz,
   created_at           timestamptz not null default now()
