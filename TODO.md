@@ -9,32 +9,50 @@
 
 **Done:**
 - ✅ Project scaffolded (Vite + React 19 + TS, Tailwind v4, dnd-kit, Formik+Yup, TanStack Query, React Router v7)
-- ✅ Git initialized, two commits on `main`: scaffold + Supabase setup
+- ✅ Git initialized; commits on `main`: scaffold → Supabase setup → TODO/gitignore tightening
 - ✅ Supabase CLI installed; project linked (`project-ref msmmqvhuaottexqypcwa`)
 - ✅ Both migrations applied to remote (`0001_init.sql`, `0002_seed_columns.sql`)
 - ✅ TypeScript types generated from live schema → `src/lib/database.types.ts`
-- ✅ `.env` and `.dev.vars` created from template, project URL plugged in
+- ✅ `.env` and `.dev.vars` filled with Supabase URL + anon key (Vite and wrangler both reach Supabase)
+- ✅ `.dev.vars` added to `.gitignore` (was a leak risk)
 
-**Pending bootstrap (do these IN ORDER before starting any coding):**
-1. **Add anon key to `.env` and `.dev.vars`** — Supabase dashboard → Settings → API → "anon public". Paste into `VITE_SUPABASE_ANON_KEY` (in `.env`) and into `VITE_SUPABASE_ANON_KEY` + `SUPABASE_ANON_KEY` (in `.dev.vars`).
-2. **Create owner user via Supabase dashboard** — Authentication → Users → "Add user" → her email + password → check "Auto Confirm User". Copy the resulting `user_id` (UUID).
-3. **Insert firm row pointing to that user_id.** Either via Supabase SQL editor or `supabase db remote query`:
+**Pending bootstrap — exactly two manual steps remain:**
+
+1. **Create the owner user.** Supabase dashboard → Authentication → Users → "Add user" → her email + a password → ✅ "Auto Confirm User". Copy the generated `user_id` (UUID format `xxxxxxxx-xxxx-...`).
+
+2. **Insert the firm row pointing to that user_id.** Supabase dashboard → SQL Editor:
    ```sql
    insert into public.firms (name, owner_user_id)
-   values ('LD Biro', '<paste-the-user-id-here>');
+   values ('LD Biro', '<paste-the-user-id-from-step-1>');
    ```
-   The `firms_seed_columns` trigger from migration 0002 will auto-create the 5 default kanban columns. Verify in Table Editor → `columns`.
-4. **Verify locally:** `bun run dev` → open `http://localhost:5173` → it'll redirect to `/app/tabla` showing the kanban with **mock data** (live data wiring is the next coding task).
+   The `firms_seed_columns` trigger from migration 0002 fires automatically and creates the 5 default kanban columns. Verify it worked: Table Editor → `columns` should show 5 rows (Inbox, U toku, Čeka klijenta, Čeka treću stranu, Gotovo).
 
-**Then start coding:** the immediate task is [#1 Wire authentication](#1-wire-authentication) so that the LoginPage actually lets her sign in, and `AppLayout` redirects to `/login` when there's no session. After that, the next task is [#2 Replace mock kanban data with live Supabase queries](#2-replace-mock-kanban-data-with-live-supabase-queries).
+After those two, Supabase is 100% ready. The app's UI still shows **mock data** because the React code isn't wired to live queries yet — that is the first coding task.
 
-**API keys still needed (not blocking until you start the voice flow):**
-- Groq API key → <https://console.groq.com> → save into both `GROQ_API_KEY` slots in `.dev.vars`
-- Gemini API key → <https://aistudio.google.com/apikey> → save into both `GEMINI_API_KEY` slots
+**First coding task when you return: [#1 Wire authentication](#1-wire-authentication).**
+- LoginPage form (Formik + `supabase.auth.signInWithPassword`)
+- `useSession()` hook in `src/lib/auth.ts`
+- Auth guard in `AppLayout` (redirect to `/login` if no session, redirect klijent users to `/portal`)
+- Auth guard in `PortalLayout` (require valid `client_memberships` row)
+- After: log in as the owner you just created → kanban renders → ready to wire live data (task #2)
 
-**Deploy not yet set up:**
-- Cloudflare Pages project not yet created. Do this only when you have something worth deploying (after auth + live kanban).
-- UptimeRobot/Cron-job.org daily ping not configured. Set up after deploy.
+**Sanity check before coding:** `bun run dev` should boot to `http://localhost:5173` without console errors. The kanban will display mock cards but Supabase is now reachable in the background — open DevTools network tab and you should see no failed requests on idle.
+
+**API keys still needed (not blocking until you build voice flow):**
+- Groq API key → <https://console.groq.com> → paste into `GROQ_API_KEY` in `.dev.vars`
+- Gemini API key → <https://aistudio.google.com/apikey> → paste into `GEMINI_API_KEY` in `.dev.vars`
+
+**Deploy not yet set up (do after auth + live kanban work):**
+- Cloudflare Pages project not yet created
+- Same env vars need to be configured in Cloudflare dashboard (Settings → Environment Variables, mark each as "secret")
+- UptimeRobot/Cron-job.org daily ping → `https://tracker.<domain>/api/health` once deployed
+- Custom subdomain (e.g. `tracker.<domain>`) → CNAME to Pages project
+
+**Reference IDs (don't paste anywhere public except where listed):**
+- Supabase project ref: `msmmqvhuaottexqypcwa` (public, in URL — fine to commit)
+- Supabase URL: `https://msmmqvhuaottexqypcwa.supabase.co` (public)
+- Supabase anon key: in `.env` / `.dev.vars` (public per Supabase, but kept out of git via `.gitignore`)
+- Supabase service_role key: NOT used in v1. If ever needed, treat like a root password.
 
 ---
 
