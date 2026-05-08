@@ -1,0 +1,12 @@
+name = "ld-biro-tracker"
+compatibility_date = "2026-05-08"
+pages_build_output_dir = "dist"
+
+# Local dev with: bun run pages:dev
+# Secrets are configured per-environment in Cloudflare dashboard:
+#   - GROQ_API_KEY
+#   - GEMINI_API_KEY
+#   - SUPABASE_URL
+#   - SUPABASE_ANON_KEY
+
+# For local dev, copy .env.example to .dev.vars
