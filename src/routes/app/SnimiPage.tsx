@@ -10,6 +10,8 @@ import { useColumns } from '@/hooks/useColumns'
 import { useFirm } from '@/hooks/useFirm'
 import { useCreateTicket } from '@/hooks/useCreateTicket'
 
+type Mode = 'save' | 'test'
+
 type Status =
   | 'idle'
   | 'recording'
@@ -79,8 +81,10 @@ function datetimeLocalToIso(local: string): string | null {
 
 export function SnimiPage() {
   const [status, setStatus] = useState<Status>('idle')
+  const [mode, setMode] = useState<Mode>('save')
   const [parsed, setParsed] = useState<ParsedTicket | null>(null)
   const [transcript, setTranscript] = useState<string | null>(null)
+  const [testTranscript, setTestTranscript] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -104,10 +108,13 @@ export function SnimiPage() {
     [parsed, clients.data],
   )
 
-  async function startRecording() {
+  async function startRecording(targetMode: Mode) {
     setErrorMsg(null)
-    setParsed(null)
-    setTranscript(null)
+    if (targetMode === 'save') {
+      setParsed(null)
+      setTranscript(null)
+    }
+    setMode(targetMode)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
@@ -143,13 +150,23 @@ export function SnimiPage() {
       const formData = new FormData()
       formData.append('audio', blob, 'voice.webm')
 
-      const res = await fetch('/api/voice', { method: 'POST', body: formData })
+      const url =
+        mode === 'test' ? '/api/voice?transcribe_only=1' : '/api/voice'
+      const res = await fetch(url, { method: 'POST', body: formData })
       if (!res.ok) {
         const err = (await res.json().catch(() => null)) as
           | { error?: string }
           | null
         throw new Error(err?.error ?? `Server error: ${res.status}`)
       }
+
+      if (mode === 'test') {
+        const data = (await res.json()) as { transcript: string }
+        setTestTranscript(data.transcript)
+        setStatus('idle')
+        return
+      }
+
       const data = (await res.json()) as {
         transcript: string
         parsed: ParsedTicket
@@ -173,67 +190,7 @@ export function SnimiPage() {
   }
 
   // ============================================================
-  // Recording UI (idle, recording, processing, error)
-  // ============================================================
-  if (status === 'idle' || status === 'recording' || status === 'processing' || status === 'error') {
-    return (
-      <div className="flex h-full flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <h1 className="mb-8 text-center text-2xl font-semibold">Snimi</h1>
-
-          <div className="flex flex-col items-center gap-6">
-            <button
-              type="button"
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onMouseLeave={() => status === 'recording' && stopRecording()}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              disabled={status === 'processing'}
-              className={cn(
-                'flex size-40 items-center justify-center rounded-full',
-                'border-4 select-none touch-none transition-all',
-                status === 'recording'
-                  ? 'border-destructive bg-destructive/10 scale-105'
-                  : 'border-primary bg-primary text-primary-foreground hover:scale-105',
-                status === 'processing' && 'opacity-50 cursor-wait',
-              )}
-              aria-label={status === 'recording' ? 'Pusti da završiš' : 'Drži i pričaj'}
-            >
-              {status === 'recording' ? (
-                <Square className="size-12" />
-              ) : status === 'processing' ? (
-                <Loader2 className="size-12 animate-spin" />
-              ) : (
-                <Mic className="size-16" />
-              )}
-            </button>
-
-            <p className="text-center text-sm text-muted-foreground">
-              {status === 'idle' && 'Drži i pričaj'}
-              {status === 'recording' && 'Snimanje... pusti da završiš'}
-              {status === 'processing' && 'Obrađujem...'}
-              {status === 'error' && (errorMsg ?? 'Greška')}
-            </p>
-
-            {status === 'error' && (
-              <button
-                type="button"
-                onClick={reset}
-                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
-              >
-                <RotateCcw className="size-4" />
-                Probaj ponovo
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ============================================================
-  // Saved UI
+  // SAVED — success state for full-pipeline save
   // ============================================================
   if (status === 'saved') {
     return (
@@ -268,263 +225,431 @@ export function SnimiPage() {
   }
 
   // ============================================================
-  // Confirming / saving UI
+  // CONFIRMING — review parsed ticket, edit, save
   // ============================================================
-  const noClients = (clients.data?.length ?? 0) === 0
-  const inboxMissing = !inboxColumn || !firm.data
-
-  if (noClients) {
-    return (
-      <div className="mx-auto max-w-md p-6">
-        <div className="rounded-lg border border-border bg-background p-6 text-center">
-          <h1 className="text-lg font-semibold">Nemaš još klijenata</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Pre nego što snimiš tiket, dodaj makar jednog klijenta.
-          </p>
-          <div className="mt-4 flex justify-center gap-2">
-            <Link
-              to="/app/klijenti"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Idi na Klijenti
-            </Link>
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
-            >
-              Otkaži
-            </button>
-          </div>
-        </div>
-      </div>
-    )
+  if (status === 'confirming' || status === 'saving') {
+    return renderConfirmForm()
   }
 
-  if (inboxMissing) {
-    return (
-      <div className="mx-auto max-w-md p-6">
-        <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
-          Firma ili Inbox kolona nedostaju u bazi. Proveri Supabase postavku.
-        </div>
-      </div>
-    )
-  }
+  // ============================================================
+  // IDLE / RECORDING / PROCESSING / ERROR
+  // — two buttons: main mic (save) + test mic (transcribe-only)
+  // ============================================================
+  const isSaveActive = mode === 'save'
+  const isTestActive = mode === 'test'
+  const isBusy =
+    status === 'recording' || status === 'processing'
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 md:px-6">
-      <h1 className="mb-1 text-2xl font-semibold">Potvrdi tiket</h1>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Pogledaj šta sam razumeo. Ispravi ako treba pre čuvanja.
-      </p>
+    <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center px-4 py-6">
+      <h1 className="mb-8 text-2xl font-semibold">Snimi</h1>
 
-      {transcript && (
-        <details className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
-          <summary className="cursor-pointer text-xs text-muted-foreground">
-            Originalni transkript
-          </summary>
-          <p className="mt-2 italic">{transcript}</p>
-        </details>
+      {/* Main mic — full pipeline */}
+      <div className="flex flex-col items-center gap-3">
+        <button
+          type="button"
+          onMouseDown={() => startRecording('save')}
+          onMouseUp={() => isSaveActive && stopRecording()}
+          onMouseLeave={() =>
+            isSaveActive && status === 'recording' && stopRecording()
+          }
+          onTouchStart={() => startRecording('save')}
+          onTouchEnd={() => isSaveActive && stopRecording()}
+          disabled={isBusy && !isSaveActive}
+          className={cn(
+            'flex size-40 items-center justify-center rounded-full',
+            'border-4 select-none touch-none transition-all',
+            isSaveActive && status === 'recording'
+              ? 'border-destructive bg-destructive/10 scale-105'
+              : 'border-primary bg-primary text-primary-foreground hover:scale-105',
+            isBusy && !isSaveActive && 'opacity-30 cursor-not-allowed',
+            isSaveActive && status === 'processing' && 'opacity-50 cursor-wait',
+          )}
+          aria-label={
+            isSaveActive && status === 'recording'
+              ? 'Pusti da završiš'
+              : 'Drži i pričaj'
+          }
+        >
+          {isSaveActive && status === 'recording' ? (
+            <Square className="size-12" />
+          ) : isSaveActive && status === 'processing' ? (
+            <Loader2 className="size-12 animate-spin" />
+          ) : (
+            <Mic className="size-16" />
+          )}
+        </button>
+
+        <p className="text-sm text-muted-foreground">
+          {isSaveActive && status === 'recording' && 'Snimanje... pusti da završiš'}
+          {isSaveActive && status === 'processing' && 'Obrađujem...'}
+          {!isSaveActive || status === 'idle' || status === 'error'
+            ? 'Drži i pričaj'
+            : null}
+        </p>
+      </div>
+
+      {/* Error */}
+      {status === 'error' && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <p className="text-sm text-destructive">{errorMsg ?? 'Greška'}</p>
+          <button
+            type="button"
+            onClick={reset}
+            className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+          >
+            <RotateCcw className="size-4" />
+            Probaj ponovo
+          </button>
+        </div>
       )}
 
-      <Formik
-        initialValues={{
-          client_id: bestMatch?.id ?? '',
-          type: parsed!.type,
-          title: parsed!.title,
-          rok_local: isoToDatetimeLocal(parsed!.rok_iso),
-          notes: parsed!.notes ?? '',
-        }}
-        validationSchema={confirmSchema}
-        onSubmit={async (values, { setStatus: setFormStatus, setSubmitting }) => {
-          setFormStatus(null)
-          setStatus('saving')
+      {/* Divider */}
+      <div className="my-8 flex w-full items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs uppercase tracking-wider text-muted-foreground">
+          Test mic
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
 
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
-            setFormStatus('Sesija je istekla. Prijavi se ponovo.')
-            setStatus('confirming')
-            setSubmitting(false)
-            return
+      {/* Test mic — transcribe only, no save */}
+      <div className="flex w-full flex-col items-center gap-3">
+        <p className="text-center text-xs text-muted-foreground">
+          Vidi kako te Whisper čuje. Ne čuva ništa.
+        </p>
+        <button
+          type="button"
+          onMouseDown={() => startRecording('test')}
+          onMouseUp={() => isTestActive && stopRecording()}
+          onMouseLeave={() =>
+            isTestActive && status === 'recording' && stopRecording()
           }
-
-          try {
-            await createTicket.mutateAsync({
-              firm_id: firm.data!.id,
-              client_id: values.client_id,
-              column_id: inboxColumn!.id,
-              created_by_user_id: user.id,
-              created_via: 'voice',
-              type: values.type,
-              title: values.title.trim(),
-              description: values.notes.trim() || null,
-              rok: datetimeLocalToIso(values.rok_local),
-              voice_transcript: transcript,
-            })
-            setStatus('saved')
-          } catch (err) {
-            setFormStatus(
-              err instanceof Error ? err.message : 'Greška pri čuvanju',
-            )
-            setStatus('confirming')
-            setSubmitting(false)
+          onTouchStart={() => startRecording('test')}
+          onTouchEnd={() => isTestActive && stopRecording()}
+          disabled={isBusy && !isTestActive}
+          className={cn(
+            'flex size-20 items-center justify-center rounded-full',
+            'border-2 select-none touch-none transition-all',
+            isTestActive && status === 'recording'
+              ? 'border-destructive bg-destructive/10 scale-105'
+              : 'border-border bg-background hover:border-primary',
+            isBusy && !isTestActive && 'opacity-30 cursor-not-allowed',
+            isTestActive && status === 'processing' && 'opacity-50 cursor-wait',
+          )}
+          aria-label={
+            isTestActive && status === 'recording'
+              ? 'Pusti da završiš test'
+              : 'Test mic'
           }
-        }}
-      >
-        {({ isSubmitting, status: formStatus, errors, touched, values }) => (
-          <Form
-            noValidate
-            className="space-y-4 rounded-lg border border-border bg-background p-5 shadow-sm"
-          >
-            <div>
-              <label htmlFor="client_id" className="mb-1 block text-sm font-medium">
-                Klijent *
-              </label>
-              <Field
-                as="select"
-                id="client_id"
-                name="client_id"
-                disabled={isSubmitting}
-                className={cn(
-                  'w-full rounded-md border bg-background px-3 py-2 text-sm',
-                  'focus:outline-none focus:ring-2 focus:ring-primary/40',
-                  touched.client_id && errors.client_id
-                    ? 'border-destructive'
-                    : 'border-border',
-                )}
+        >
+          {isTestActive && status === 'recording' ? (
+            <Square className="size-6 text-destructive" />
+          ) : isTestActive && status === 'processing' ? (
+            <Loader2 className="size-6 animate-spin" />
+          ) : (
+            <Mic className="size-7" />
+          )}
+        </button>
+
+        {testTranscript && (
+          <div className="mt-2 w-full rounded-md border border-border bg-muted/30 p-3">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">
+              Whisper čuo:
+            </div>
+            <p className="whitespace-pre-wrap text-sm italic">
+              "{testTranscript}"
+            </p>
+            <button
+              type="button"
+              onClick={() => setTestTranscript(null)}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Obriši
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // ============================================================
+  // Confirm form renderer — extracted for clarity
+  // ============================================================
+  function renderConfirmForm() {
+    const noClients = (clients.data?.length ?? 0) === 0
+    const inboxMissing = !inboxColumn || !firm.data
+
+    if (noClients) {
+      return (
+        <div className="mx-auto max-w-md p-6">
+          <div className="rounded-lg border border-border bg-background p-6 text-center">
+            <h1 className="text-lg font-semibold">Nemaš još klijenata</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pre nego što snimiš tiket, dodaj makar jednog klijenta.
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
+              <Link
+                to="/app/klijenti"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                <option value="">— izaberi —</option>
-                {(clients.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Field>
-              <ErrorMessage
-                name="client_id"
-                component="div"
-                className="mt-1 text-xs text-destructive"
-              />
-              {parsed && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Razumeo sam: "{parsed.client_name}"
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium">Tip</label>
-              <div className="flex gap-2">
-                {(['javicu_se', 'zaduzenje', 'pitanje'] as const).map((t) => (
-                  <label
-                    key={t}
-                    className={cn(
-                      'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm',
-                      values.type === t
-                        ? 'border-primary bg-primary/5 font-medium'
-                        : 'border-border hover:bg-accent/50',
-                    )}
-                  >
-                    <Field
-                      type="radio"
-                      name="type"
-                      value={t}
-                      disabled={isSubmitting}
-                      className="sr-only"
-                    />
-                    {TYPE_LABELS[t]}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="title" className="mb-1 block text-sm font-medium">
-                Naslov *
-              </label>
-              <Field
-                id="title"
-                name="title"
-                disabled={isSubmitting}
-                className={cn(
-                  'w-full rounded-md border bg-background px-3 py-2 text-sm',
-                  'focus:outline-none focus:ring-2 focus:ring-primary/40',
-                  touched.title && errors.title
-                    ? 'border-destructive'
-                    : 'border-border',
-                )}
-              />
-              <ErrorMessage
-                name="title"
-                component="div"
-                className="mt-1 text-xs text-destructive"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="rok_local" className="mb-1 block text-sm font-medium">
-                Rok
-              </label>
-              <Field
-                id="rok_local"
-                name="rok_local"
-                type="datetime-local"
-                disabled={isSubmitting}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Ostavi prazno ako nema roka.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="notes" className="mb-1 block text-sm font-medium">
-                Beleška
-              </label>
-              <Field
-                as="textarea"
-                id="notes"
-                name="notes"
-                rows={3}
-                disabled={isSubmitting}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-
-            {formStatus && (
-              <div
-                role="alert"
-                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                {formStatus}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
+                Idi na Klijenti
+              </Link>
               <button
                 type="button"
                 onClick={reset}
-                disabled={isSubmitting}
-                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
               >
                 Otkaži
               </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                Sačuvaj
-              </button>
             </div>
-          </Form>
+          </div>
+        </div>
+      )
+    }
+
+    if (inboxMissing) {
+      return (
+        <div className="mx-auto max-w-md p-6">
+          <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
+            Firma ili Inbox kolona nedostaju u bazi. Proveri Supabase postavku.
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-6 md:px-6">
+        <h1 className="mb-1 text-2xl font-semibold">Potvrdi tiket</h1>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Pogledaj šta sam razumeo. Ispravi ako treba pre čuvanja.
+        </p>
+
+        {transcript && (
+          <details className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
+            <summary className="cursor-pointer text-xs text-muted-foreground">
+              Originalni transkript
+            </summary>
+            <p className="mt-2 italic">{transcript}</p>
+          </details>
         )}
-      </Formik>
-    </div>
-  )
+
+        <Formik
+          initialValues={{
+            client_id: bestMatch?.id ?? '',
+            type: parsed!.type,
+            title: parsed!.title,
+            rok_local: isoToDatetimeLocal(parsed!.rok_iso),
+            notes: parsed!.notes ?? '',
+          }}
+          validationSchema={confirmSchema}
+          onSubmit={async (
+            values,
+            { setStatus: setFormStatus, setSubmitting },
+          ) => {
+            setFormStatus(null)
+            setStatus('saving')
+
+            const {
+              data: { user },
+            } = await supabase.auth.getUser()
+            if (!user) {
+              setFormStatus('Sesija je istekla. Prijavi se ponovo.')
+              setStatus('confirming')
+              setSubmitting(false)
+              return
+            }
+
+            try {
+              await createTicket.mutateAsync({
+                firm_id: firm.data!.id,
+                client_id: values.client_id,
+                column_id: inboxColumn!.id,
+                created_by_user_id: user.id,
+                created_via: 'voice',
+                type: values.type,
+                title: values.title.trim(),
+                description: values.notes.trim() || null,
+                rok: datetimeLocalToIso(values.rok_local),
+                voice_transcript: transcript,
+              })
+              setStatus('saved')
+            } catch (err) {
+              setFormStatus(
+                err instanceof Error ? err.message : 'Greška pri čuvanju',
+              )
+              setStatus('confirming')
+              setSubmitting(false)
+            }
+          }}
+        >
+          {({ isSubmitting, status: formStatus, errors, touched, values }) => (
+            <Form
+              noValidate
+              className="space-y-4 rounded-lg border border-border bg-background p-5 shadow-sm"
+            >
+              <div>
+                <label
+                  htmlFor="client_id"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Klijent *
+                </label>
+                <Field
+                  as="select"
+                  id="client_id"
+                  name="client_id"
+                  disabled={isSubmitting}
+                  className={cn(
+                    'w-full rounded-md border bg-background px-3 py-2 text-sm',
+                    'focus:outline-none focus:ring-2 focus:ring-primary/40',
+                    touched.client_id && errors.client_id
+                      ? 'border-destructive'
+                      : 'border-border',
+                  )}
+                >
+                  <option value="">— izaberi —</option>
+                  {(clients.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Field>
+                <ErrorMessage
+                  name="client_id"
+                  component="div"
+                  className="mt-1 text-xs text-destructive"
+                />
+                {parsed && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Razumeo sam: "{parsed.client_name}"
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Tip</label>
+                <div className="flex gap-2">
+                  {(['javicu_se', 'zaduzenje', 'pitanje'] as const).map((t) => (
+                    <label
+                      key={t}
+                      className={cn(
+                        'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm',
+                        values.type === t
+                          ? 'border-primary bg-primary/5 font-medium'
+                          : 'border-border hover:bg-accent/50',
+                      )}
+                    >
+                      <Field
+                        type="radio"
+                        name="type"
+                        value={t}
+                        disabled={isSubmitting}
+                        className="sr-only"
+                      />
+                      {TYPE_LABELS[t]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="title"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Naslov *
+                </label>
+                <Field
+                  id="title"
+                  name="title"
+                  disabled={isSubmitting}
+                  className={cn(
+                    'w-full rounded-md border bg-background px-3 py-2 text-sm',
+                    'focus:outline-none focus:ring-2 focus:ring-primary/40',
+                    touched.title && errors.title
+                      ? 'border-destructive'
+                      : 'border-border',
+                  )}
+                />
+                <ErrorMessage
+                  name="title"
+                  component="div"
+                  className="mt-1 text-xs text-destructive"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="rok_local"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Rok
+                </label>
+                <Field
+                  id="rok_local"
+                  name="rok_local"
+                  type="datetime-local"
+                  disabled={isSubmitting}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Ostavi prazno ako nema roka.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="notes"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Beleška
+                </label>
+                <Field
+                  as="textarea"
+                  id="notes"
+                  name="notes"
+                  rows={3}
+                  disabled={isSubmitting}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+
+              {formStatus && (
+                <div
+                  role="alert"
+                  className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {formStatus}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={reset}
+                  disabled={isSubmitting}
+                  className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                >
+                  Otkaži
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  Sačuvaj
+                </button>
+              </div>
+            </Form>
+          )}
+        </Formik>
+      </div>
+    )
+  }
 }

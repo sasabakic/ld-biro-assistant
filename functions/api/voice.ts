@@ -98,8 +98,14 @@ Vrati SAMO JSON, bez teksta okolo, bez code-fence-a.`
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    if (!env.GROQ_API_KEY || !env.GEMINI_API_KEY) {
-      return jsonError('Server nije konfigurisan: nedostaju API ključevi.', 500)
+    const transcribeOnly =
+      new URL(request.url).searchParams.get('transcribe_only') === '1'
+
+    if (!env.GROQ_API_KEY) {
+      return jsonError('Server nije konfigurisan: nedostaje GROQ_API_KEY.', 500)
+    }
+    if (!transcribeOnly && !env.GEMINI_API_KEY) {
+      return jsonError('Server nije konfigurisan: nedostaje GEMINI_API_KEY.', 500)
     }
 
     const form = await request.formData()
@@ -114,6 +120,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
     if (transcript.length < 2) {
       return jsonError('Snimak je prekratak. Probaj ponovo.', 400)
+    }
+
+    if (transcribeOnly) {
+      // Test-mic mode: skip Gemini, return raw transcript so she can calibrate
+      // how well Whisper hears her.
+      return jsonOk({ transcript })
     }
 
     const parsed = await parseWithGemini(transcript, env.GEMINI_API_KEY)
