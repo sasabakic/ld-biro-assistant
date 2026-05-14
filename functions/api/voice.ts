@@ -7,8 +7,7 @@
  *   - `audio` (file, required): webm/ogg/mp3/wav
  *   - `clients_json` (string, optional): JSON array of `{ id, name }` for
  *     closed-set client matching. When present, Gemini tries to pick one
- *     of these by ID rather than emitting free-text. Significantly more
- *     robust against Serbian morphology and Whisper mishearings.
+ *     of these by ID rather than emitting free-text.
  *
  * Query:
  *   - `?transcribe_only=1` — skip Gemini, return only the raw transcript
@@ -20,6 +19,13 @@
  * Returns: { transcript, parsed } where parsed = ParsedTicket.
  *   The FE shows a confirmation card and inserts the ticket directly via
  *   supabase-js. The worker stays minimal — no auth forwarding, no DB writes.
+ *
+ * Prompt design (for cost & cache efficiency):
+ *   - The systemInstruction is kept stable across calls — only the clients
+ *     list changes (rarely). This maximizes implicit prefix caching.
+ *   - Per-call dynamic state (current Belgrade time = the anchor for
+ *     relative date math, plus the transcript itself) lives in the user
+ *     message. That's where it belongs and it doesn't bust the cache.
  *
  * Env (Cloudflare Pages secrets):
  *   GROQ_API_KEY      — https://console.groq.com
@@ -82,6 +88,11 @@ function todayInBelgradeIso(): string {
   return `${date}T${time}${sign}${oh}:${om}`
 }
 
+/**
+ * Stable across calls (cache-friendly). Only changes when the clients list
+ * itself changes (rare). Sorted alphabetically by the FE to keep ordering
+ * deterministic.
+ */
 function systemPrompt(knownClients: KnownClient[]): string {
   const clientsBlock =
     knownClients.length > 0
@@ -92,34 +103,49 @@ function systemPrompt(knownClients: KnownClient[]): string {
 
   return `Ti si asistent koji pretvara kratke glasovne beleške računovođe u strukturisane tikete.
 
-Trenutno vreme: ${nowBelgradeLabel()} (Europe/Belgrade)
-Anchor ISO (koristi isti timezone offset u izlazu): ${todayInBelgradeIso()}
-
 ${clientsBlock}
 
-Ulaz je kratak (1-3 rečenice) tekst na srpskom (latinica) koji opisuje šta je klijent tražio ili šta računovođa planira posle poziva.
+Ulaz je transkript glasovne poruke na srpskom (latinica). Whisper ponekad pogrešno čuje srpske dijakritike (č, ć, š, đ, ž) — budi tolerantan i fokusiraj se na značenje, ne na doslovan tekst.
 
 Vrati STROGO validan JSON sa poljima:
 
-- client_name (string): ime klijenta kako ga je korisnik izgovorio (nominativ ako možeš). Ovo je za prikaz na ekranu — ne mora biti tačan naziv iz sistema.
+- client_name (string): ime klijenta kako ga je korisnik izgovorio (nominativ ako je moguće). Za prikaz na ekranu.
 
-- matched_client_id (string ili null): ID klijenta iz liste iznad ako si SIGURAN da se to ime poklapa. Tolerantan budi prema padežima i deklinaciji ("Markoviću" se odnosi na "Marković"), kao i prema kraćim oblicima ("Petrović" se odnosi na "Petrović Konsalting d.o.o." ako je to jedini Petrović u listi). Ako je više klijenata sa sličnim imenom i nije jasno koji, ili ako uopšte nema dovoljno dobrog poklapanja, vrati null.
+- matched_client_id (string ili null): ID klijenta iz liste iznad ako si SIGURAN da se to ime poklapa. Pravila:
+    * Tolerantan budi prema padežima: "Markoviću sam rekla" → traži "Marković".
+    * Skraćeni oblici prolaze: "Petrović" → "Petrović Konsalting d.o.o." (ako je jedini Petrović).
+    * Manje Whisper greške ignoriši: "Markovic" → "Marković".
+    * Ako više klijenata može biti, ili nema dovoljno dobrog poklapanja → null.
+    * Nikad ne izmišljaj ID koji nije u listi.
 
 - type ('pitanje' | 'zaduzenje' | 'javicu_se'):
-    * 'javicu_se' ako računovođa kaže da će se nekome javiti kasnije
-    * 'zaduzenje' ako je novi posao sa rokom ili deliverableom
-    * 'pitanje' ako je brzo pitanje koje je već odgovoreno
+    * 'javicu_se' — računovođa će se javiti klijentu kasnije (poziv u budućnosti)
+    * 'zaduzenje' — novi posao sa rokom ili konkretnim deliverableom
+    * 'pitanje' — brzo pitanje koje je već odgovoreno tokom poziva
+    Ako nije jasno, izaberi 'pitanje' kao default.
 
-- title (string, do 80 karaktera): kratak naslov tiketa.
+- title (string, najviše 80 karaktera): kratak naslov tiketa. Ne ponavljaj ime klijenta u naslovu jer je već u client_name.
 
-- rok_iso (string ili null): ISO 8601 timestamp u Europe/Belgrade timezone (uključi offset, npr. +02:00 leti).
-    Pretvori relativne fraze u apsolutni timestamp koristeći anchor iznad.
-    Primeri: "danas do 16h" → istog dana u 16:00:00 sa offsetom; "sutra ujutru" → sutra u 09:00:00; "15. jun" → 2026-06-15T00:00:00 sa offsetom.
-    Ako rok nije pomenut, vrati null.
+- rok_iso (string ili null): ISO 8601 timestamp u Europe/Belgrade timezone, sa eksplicitnim offsetom (+02:00 leti / +01:00 zimi). Koristi "Anchor" iz user message-a kao trenutno vreme za izračunavanje relativnih datuma. Primeri:
+    "danas do 16h" → isti datum kao anchor, T16:00:00, sa offsetom anchora
+    "sutra ujutru" → anchor + 1 dan, T09:00:00
+    "15. jun" → 2026-06-15T00:00:00 sa offsetom anchora
+    Ako rok nije pomenut, null.
 
-- notes (string ili null): dodatni kontekst koji ne staje u title.
+- notes (string ili null): dodatni kontekst koji ne staje u title. Ako nije bitno, null.
 
-Vrati SAMO JSON, bez teksta okolo, bez code-fence-a.`
+Vrati SAMO JSON, bez objašnjenja, bez code-fence-a, bez ničega okolo.`
+}
+
+/**
+ * Per-call dynamic content. Goes in user message (not systemInstruction)
+ * so it doesn't bust the prefix cache.
+ */
+function userMessage(transcript: string): string {
+  return `Anchor: ${todayInBelgradeIso()} (${nowBelgradeLabel()})
+
+Transkript:
+${transcript}`
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -152,7 +178,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return jsonOk({ transcript })
     }
 
-    // Parse optional clients list — used by Gemini for closed-set matching.
     const clientsJson = form.get('clients_json')
     const knownClients = parseClientsJson(clientsJson)
 
@@ -165,8 +190,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return jsonError('Parsiranje nije uspelo.', 502)
     }
 
-    // Defense in depth: only return matched_client_id if it's actually in the
-    // list we sent. Prevents Gemini from inventing IDs.
+    // Defense in depth: reject any matched_client_id that wasn't in the list
+    // we sent. Prevents Gemini from inventing IDs.
     if (
       parsed.matched_client_id &&
       !knownClients.some((c) => c.id === parsed.matched_client_id)
@@ -186,7 +211,7 @@ function parseClientsJson(raw: FormDataEntryValue | null): KnownClient[] {
   try {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    const valid = parsed
+    return parsed
       .filter(
         (c): c is KnownClient =>
           c &&
@@ -196,7 +221,6 @@ function parseClientsJson(raw: FormDataEntryValue | null): KnownClient[] {
           c.name.length > 0,
       )
       .slice(0, MAX_CLIENTS)
-    return valid
   } catch {
     return []
   }
@@ -234,7 +258,9 @@ async function parseWithGemini(
 
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt(knownClients) }] },
-    contents: [{ role: 'user', parts: [{ text: transcript }] }],
+    contents: [
+      { role: 'user', parts: [{ text: userMessage(transcript) }] },
+    ],
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: {
@@ -269,7 +295,6 @@ async function parseWithGemini(
   if (!text) return null
   try {
     const parsed = JSON.parse(text) as ParsedTicket
-    // Older payloads might not include matched_client_id — normalize to null.
     if (typeof parsed.matched_client_id === 'undefined') {
       parsed.matched_client_id = null
     }
