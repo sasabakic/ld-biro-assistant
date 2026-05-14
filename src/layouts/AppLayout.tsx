@@ -1,6 +1,7 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { Calendar, Mic, Settings, Users } from 'lucide-react'
+import { Navigate, NavLink, Outlet } from 'react-router-dom'
+import { Calendar, Loader2, LogOut, Mic, Settings, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { signOut, useSession } from '@/lib/auth'
 
 const navItems = [
   { to: '/app/tabla', label: 'Tabla', Icon: Calendar },
@@ -10,6 +11,20 @@ const navItems = [
 ]
 
 export function AppLayout() {
+  const session = useSession()
+
+  if (session.status === 'loading') {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (session.status === 'unauthenticated') {
+    return <Navigate to="/login" replace />
+  }
+
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Sidebar (desktop) / bottom bar (mobile) */}
@@ -23,6 +38,7 @@ export function AppLayout() {
         <div className="hidden md:block px-3 pb-6 text-lg font-semibold tracking-tight">
           LD Biro
         </div>
+
         <ul className="flex flex-1 md:flex-col">
           {navItems.map(({ to, label, Icon }) => (
             <li key={to} className="flex-1 md:flex-none">
@@ -44,6 +60,21 @@ export function AppLayout() {
             </li>
           ))}
         </ul>
+
+        {/* Sign-out: desktop-only footer in sidebar */}
+        <div className="hidden md:block md:mt-2">
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className={cn(
+              'flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm',
+              'text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors',
+            )}
+          >
+            <LogOut className="size-4" />
+            <span>Odjavi se</span>
+          </button>
+        </div>
       </nav>
 
       {/* Main */}
