@@ -23,6 +23,7 @@ type Status =
 
 type ParsedTicket = {
   client_name: string
+  matched_client_id: string | null
   type: 'pitanje' | 'zaduzenje' | 'javicu_se'
   title: string
   rok_iso: string | null
@@ -100,13 +101,18 @@ export function SnimiPage() {
     [columns.data],
   )
 
-  const bestMatch = useMemo(
-    () =>
-      parsed
-        ? findBestClientMatch(parsed.client_name, clients.data ?? [])
-        : null,
-    [parsed, clients.data],
-  )
+  const bestMatch = useMemo(() => {
+    if (!parsed) return null
+    // Prefer Gemini's closed-set match if it returned a valid id.
+    if (parsed.matched_client_id) {
+      const fromGemini = (clients.data ?? []).find(
+        (c) => c.id === parsed.matched_client_id,
+      )
+      if (fromGemini) return fromGemini
+    }
+    // Fallback: client-side fuzzy match on the raw extracted name.
+    return findBestClientMatch(parsed.client_name, clients.data ?? [])
+  }, [parsed, clients.data])
 
   async function startRecording(targetMode: Mode) {
     setErrorMsg(null)
@@ -149,6 +155,14 @@ export function SnimiPage() {
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
       const formData = new FormData()
       formData.append('audio', blob, 'voice.webm')
+
+      // For the save flow, send the known clients so Gemini can match against
+      // them directly (handles Serbian morphology, short forms, etc).
+      // Test mode skips this — it only transcribes.
+      if (mode === 'save' && clients.data && clients.data.length > 0) {
+        const minimal = clients.data.map((c) => ({ id: c.id, name: c.name }))
+        formData.append('clients_json', JSON.stringify(minimal))
+      }
 
       const url =
         mode === 'test' ? '/api/voice?transcribe_only=1' : '/api/voice'

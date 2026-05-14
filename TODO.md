@@ -594,6 +594,20 @@ Don't pre-generate all of them — wrap on first use. Avoid unused-component spr
 
 ---
 
+## Client aliases / nicknames (deferred)
+
+Once voice usage stabilizes, add an `aliases` field to `clients` (Postgres `text[]` or jsonb) so each client can have alternative names she'd use in speech ("Marko" for "Marković Konsalting d.o.o.", "Petar" for "Petrović s.p.", etc.). 
+
+**Implementation when ready:**
+1. Migration: `alter table public.clients add column aliases text[] not null default array[]::text[];`
+2. UI on KlijentDetaljPage: chip-style aliases editor (add/remove)
+3. SnimiPage: include aliases in the `clients_json` sent to the voice Worker, e.g. `{ id, name, aliases: ["Marko", "Markoviću"] }`
+4. Worker prompt: tell Gemini that aliases are alternative names for matching. Returned `matched_client_id` remains the canonical row.
+
+No schema migration needed until you actually want this. Just a sentence to remember: aliases drop in trivially because the Gemini-driven matching is already a closed-set problem.
+
+---
+
 ## Deferred / open questions
 
 - **WhatsApp/Viber integration** — explicitly out of scope for v1. Revisit after she validates the core flow.
