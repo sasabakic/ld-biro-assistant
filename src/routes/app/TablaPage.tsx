@@ -7,23 +7,27 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { Link } from 'react-router-dom'
-import { Loader2, Mic } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Mic } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { matchesDayFilter, type DayFilter } from '@/lib/dateFilter'
+import {
+  formatWeekRangeLabel,
+  matchesFilter,
+  weekRange,
+  type TabFilter,
+} from '@/lib/dateFilter'
 import { useColumns } from '@/hooks/useColumns'
 import { useTickets } from '@/hooks/useTickets'
 import { useMoveTicket } from '@/hooks/useMoveTicket'
 import { KanbanColumn } from '@/components/kanban/KanbanColumn'
 
-const filters: { id: DayFilter; label: string }[] = [
-  { id: 'sve', label: 'Sve' },
-  { id: 'danas', label: 'Danas' },
-  { id: 'sutra', label: 'Sutra' },
-  { id: 'nedelja', label: 'Nedelja' },
+const pillFilters: { filter: TabFilter; label: string }[] = [
+  { filter: { type: 'sve' }, label: 'Sve' },
+  { filter: { type: 'danas' }, label: 'Danas' },
+  { filter: { type: 'sutra' }, label: 'Sutra' },
 ]
 
 export function TablaPage() {
-  const [filter, setFilter] = useState<DayFilter>('danas')
+  const [filter, setFilter] = useState<TabFilter>({ type: 'danas' })
 
   const columns = useColumns()
   const tickets = useTickets()
@@ -41,8 +45,28 @@ export function TablaPage() {
     move.mutate({ id, columnId })
   }
 
+  function shiftWeek(delta: number) {
+    setFilter((prev) => {
+      const current = prev.type === 'week' ? prev.weekOffset : 0
+      return { type: 'week', weekOffset: current + delta }
+    })
+  }
+
+  function jumpToThisWeek() {
+    setFilter({ type: 'week', weekOffset: 0 })
+  }
+
+  const isPillActive = (f: TabFilter) =>
+    f.type !== 'week' && filter.type === f.type
+  const isWeekMode = filter.type === 'week'
+
+  // Compute the visible week range (only meaningful when in week mode, but
+  // we always compute current-week so the label is shown grayed when idle).
+  const range = weekRange(isWeekMode ? filter.weekOffset : 0)
+  const weekLabel = formatWeekRangeLabel(range.start, range.end)
+
   const visibleTickets = (tickets.data ?? []).filter((t) =>
-    matchesDayFilter(t, filter),
+    matchesFilter(t, filter),
   )
 
   const isLoading = columns.isLoading || tickets.isLoading
@@ -51,23 +75,64 @@ export function TablaPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:px-6">
-        <div className="flex items-center gap-2">
-          {filters.map((f) => (
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3 md:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Pill filters */}
+          <div className="flex items-center gap-2">
+            {pillFilters.map(({ filter: f, label }) => (
+              <button
+                key={f.type}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  'rounded-full px-3 py-1.5 text-sm transition-colors',
+                  isPillActive(f)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Week navigator */}
+          <div className="flex items-center gap-1 rounded-full bg-muted/50 p-1">
             <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-sm transition-colors',
-                filter === f.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
+              type="button"
+              onClick={() => shiftWeek(-1)}
+              aria-label="Prethodna nedelja"
+              className="rounded-full p-1.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
-              {f.label}
+              <ChevronLeft className="size-4" />
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={jumpToThisWeek}
+              className={cn(
+                'rounded-full px-3 py-1 text-sm transition-colors tabular-nums',
+                isWeekMode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-background hover:text-foreground',
+              )}
+              title={
+                isWeekMode && filter.weekOffset !== 0
+                  ? 'Klikni za povratak na ovu nedelju'
+                  : undefined
+              }
+            >
+              {weekLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => shiftWeek(1)}
+              aria-label="Sledeća nedelja"
+              className="rounded-full p-1.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
         </div>
+
         <Link
           to="/app/snimi"
           className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
