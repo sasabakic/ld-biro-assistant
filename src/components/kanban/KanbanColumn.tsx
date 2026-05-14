@@ -1,11 +1,12 @@
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/cn'
-import type { ColumnDef, Ticket } from './types'
 import { KanbanCard } from './KanbanCard'
+import type { ColumnRow } from '@/hooks/useColumns'
+import type { TicketWithClient } from '@/hooks/useTickets'
 
 type Props = {
-  column: ColumnDef
-  tickets: Ticket[]
+  column: ColumnRow
+  tickets: TicketWithClient[]
 }
 
 export function KanbanColumn({ column, tickets }: Props) {
@@ -19,7 +20,7 @@ export function KanbanColumn({ column, tickets }: Props) {
         isOver && 'bg-accent border-primary/30',
       )}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium">{column.name}</h3>
         <span className="text-xs text-muted-foreground tabular-nums">
           {tickets.length}

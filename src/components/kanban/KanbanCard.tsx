@@ -1,8 +1,12 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Phone, ClipboardList, HelpCircle } from 'lucide-react'
+import { ClipboardList, HelpCircle, Phone } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { Ticket, TicketType } from './types'
+import { formatShortDate } from '@/lib/formatDate'
+import type { TicketWithClient } from '@/hooks/useTickets'
+import type { Database } from '@/lib/database.types'
+
+type TicketType = Database['public']['Enums']['ticket_type']
 
 const typeIcon: Record<TicketType, typeof Phone> = {
   javicu_se: Phone,
@@ -16,16 +20,13 @@ const typeLabel: Record<TicketType, string> = {
   pitanje: 'Pitanje',
 }
 
-type Props = {
-  ticket: Ticket
-}
+type Props = { ticket: TicketWithClient }
 
 export function KanbanCard({ ticket }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: ticket.id })
 
   const Icon = typeIcon[ticket.type]
-
   const style = transform
     ? { transform: CSS.Translate.toString(transform) }
     : undefined
@@ -53,13 +54,13 @@ export function KanbanCard({ ticket }: Props) {
           aria-label={typeLabel[ticket.type]}
         />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-medium text-muted-foreground">
-            {ticket.clientName}
+          <div className="truncate text-xs font-medium text-muted-foreground">
+            {ticket.client?.name ?? '—'}
           </div>
           <div className="mt-0.5 text-sm leading-snug">{ticket.title}</div>
           {ticket.rok && (
             <div className="mt-1.5 text-xs text-muted-foreground">
-              rok: {ticket.rok}
+              rok: {formatShortDate(ticket.rok)}
             </div>
           )}
         </div>

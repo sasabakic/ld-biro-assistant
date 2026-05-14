@@ -6,13 +6,14 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { Mic } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { Loader2, Mic } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { matchesDayFilter, type DayFilter } from '@/lib/dateFilter'
+import { useColumns } from '@/hooks/useColumns'
+import { useTickets } from '@/hooks/useTickets'
+import { useMoveTicket } from '@/hooks/useMoveTicket'
 import { KanbanColumn } from '@/components/kanban/KanbanColumn'
-import type { Ticket, ColumnDef } from '@/components/kanban/types'
-
-type DayFilter = 'sve' | 'danas' | 'sutra' | 'nedelja'
 
 const filters: { id: DayFilter; label: string }[] = [
   { id: 'sve', label: 'Sve' },
@@ -21,65 +22,12 @@ const filters: { id: DayFilter; label: string }[] = [
   { id: 'nedelja', label: 'Nedelja' },
 ]
 
-const MOCK_COLUMNS: ColumnDef[] = [
-  { id: 'inbox', name: 'Inbox' },
-  { id: 'u-toku', name: 'U toku' },
-  { id: 'ceka-klijenta', name: 'Čeka klijenta' },
-  { id: 'ceka-trecu-stranu', name: 'Čeka treću stranu' },
-  { id: 'gotovo', name: 'Gotovo' },
-]
-
-const MOCK_TICKETS: Ticket[] = [
-  {
-    id: '1',
-    columnId: 'inbox',
-    clientName: 'Lukić d.o.o.',
-    type: 'javicu_se',
-    title: 'Javiću se za savet o bilansu',
-    rok: 'Danas',
-    planiranoZa: 'danas',
-  },
-  {
-    id: '2',
-    columnId: 'inbox',
-    clientName: 'Marković s.p.',
-    type: 'zaduzenje',
-    title: 'PDV za maj',
-    rok: '15. jun',
-    planiranoZa: 'danas',
-  },
-  {
-    id: '3',
-    columnId: 'u-toku',
-    clientName: 'Petrović s.p.',
-    type: 'zaduzenje',
-    title: 'PDV za maj',
-    rok: '15. maj',
-    planiranoZa: 'danas',
-  },
-  {
-    id: '4',
-    columnId: 'u-toku',
-    clientName: 'Janić d.o.o.',
-    type: 'javicu_se',
-    title: 'Javiću se za savet',
-    rok: 'Danas, 16h',
-    planiranoZa: 'danas',
-  },
-  {
-    id: '5',
-    columnId: 'ceka-klijenta',
-    clientName: 'Stojanović d.o.o.',
-    type: 'zaduzenje',
-    title: 'Čeka izvod od 9.5',
-    rok: null,
-    planiranoZa: null,
-  },
-]
-
 export function TablaPage() {
-  const [tickets, setTickets] = useState<Ticket[]>(MOCK_TICKETS)
   const [filter, setFilter] = useState<DayFilter>('danas')
+
+  const columns = useColumns()
+  const tickets = useTickets()
+  const move = useMoveTicket()
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -88,21 +36,18 @@ export function TablaPage() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over) return
-    const ticketId = String(active.id)
-    const newColumnId = String(over.id)
-    setTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, columnId: newColumnId } : t)),
-    )
+    const id = String(active.id)
+    const columnId = String(over.id)
+    move.mutate({ id, columnId })
   }
 
-  const visibleTickets = tickets.filter((t) => {
-    if (filter === 'sve') return true
-    if (filter === 'danas') return t.planiranoZa === 'danas'
-    if (filter === 'sutra') return t.planiranoZa === 'sutra'
-    if (filter === 'nedelja')
-      return t.planiranoZa === 'danas' || t.planiranoZa === 'sutra'
-    return true
-  })
+  const visibleTickets = (tickets.data ?? []).filter((t) =>
+    matchesDayFilter(t, filter),
+  )
+
+  const isLoading = columns.isLoading || tickets.isLoading
+  const hasError = columns.error || tickets.error
+  const noColumns = !isLoading && !hasError && (columns.data?.length ?? 0) === 0
 
   return (
     <div className="flex h-full flex-col">
@@ -132,17 +77,50 @@ export function TablaPage() {
         </Link>
       </header>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4 md:px-6">
-          {MOCK_COLUMNS.map((col) => (
-            <KanbanColumn
-              key={col.id}
-              column={col}
-              tickets={visibleTickets.filter((t) => t.columnId === col.id)}
-            />
-          ))}
+      {isLoading && (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-      </DndContext>
+      )}
+
+      {hasError && (
+        <div className="flex flex-1 items-center justify-center px-6">
+          <div className="max-w-md text-center">
+            <p className="text-sm font-medium text-destructive">
+              Greška pri učitavanju table.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pokušaj da osvežiš stranicu. Ako greška ostane, proveri da li je
+              tvoja firma postavljena u Supabase-u.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {noColumns && (
+        <div className="flex flex-1 items-center justify-center px-6">
+          <div className="max-w-md text-center">
+            <p className="text-sm font-medium">Tabla još nije postavljena.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nema kolona za tvoju firmu. Proveri da firma postoji u bazi.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !hasError && !noColumns && (
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4 md:px-6">
+            {columns.data!.map((col) => (
+              <KanbanColumn
+                key={col.id}
+                column={col}
+                tickets={visibleTickets.filter((t) => t.column_id === col.id)}
+              />
+            ))}
+          </div>
+        </DndContext>
+      )}
     </div>
   )
 }
