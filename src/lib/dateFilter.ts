@@ -73,6 +73,11 @@ export function matchesFilter(t: TicketDates, filter: TabFilter): boolean {
 const dayFmt = new Intl.DateTimeFormat('sr-Latn', { day: 'numeric' })
 const monthFmt = new Intl.DateTimeFormat('sr-Latn', { month: 'long' })
 
+/** Format one day like "9. maj 2026" (Serbian Latin). */
+export function formatSingleDay(d: Date): string {
+  return `${dayFmt.format(d)}. ${monthFmt.format(d)} ${d.getFullYear()}`
+}
+
 /**
  * Format a week range as a human-readable Serbian Latin label.
  *  - Same month: "12. — 18. maj 2026"
@@ -94,4 +99,20 @@ export function formatWeekRangeLabel(start: Date, end: Date): string {
     return `${startD}. ${startM} — ${endD}. ${endM} ${endY}`
   }
   return `${startD}. — ${endD}. ${endM} ${endY}`
+}
+
+/**
+ * The label shown between the navigation arrows on the kanban header.
+ * Adapts to the active filter:
+ *   sve    → "Sve"
+ *   danas  → "9. maj 2026"
+ *   sutra  → "10. maj 2026"
+ *   week   → "12. — 18. maj 2026"
+ */
+export function activeFilterLabel(filter: TabFilter): string {
+  if (filter.type === 'sve') return 'Sve'
+  if (filter.type === 'danas') return formatSingleDay(new Date())
+  if (filter.type === 'sutra') return formatSingleDay(addDays(new Date(), 1))
+  const { start, end } = weekRange(filter.weekOffset)
+  return formatWeekRangeLabel(start, end)
 }

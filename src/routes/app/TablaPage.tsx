@@ -10,9 +10,8 @@ import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Loader2, Mic } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import {
-  formatWeekRangeLabel,
+  activeFilterLabel,
   matchesFilter,
-  weekRange,
   type TabFilter,
 } from '@/lib/dateFilter'
 import { useColumns } from '@/hooks/useColumns'
@@ -60,10 +59,12 @@ export function TablaPage() {
     f.type !== 'week' && filter.type === f.type
   const isWeekMode = filter.type === 'week'
 
-  // Compute the visible week range (only meaningful when in week mode, but
-  // we always compute current-week so the label is shown grayed when idle).
-  const range = weekRange(isWeekMode ? filter.weekOffset : 0)
-  const weekLabel = formatWeekRangeLabel(range.start, range.end)
+  // The label between the arrows. Always shows something contextual:
+  //   sve   → "Sve"
+  //   danas → today's date
+  //   sutra → tomorrow's date
+  //   week  → date range of the active week
+  const navLabel = activeFilterLabel(filter)
 
   const visibleTickets = (tickets.data ?? []).filter((t) =>
     matchesFilter(t, filter),
@@ -115,12 +116,14 @@ export function TablaPage() {
                   : 'text-muted-foreground hover:bg-background hover:text-foreground',
               )}
               title={
-                isWeekMode && filter.weekOffset !== 0
-                  ? 'Klikni za povratak na ovu nedelju'
-                  : undefined
+                isWeekMode
+                  ? filter.weekOffset !== 0
+                    ? 'Klikni za povratak na ovu nedelju'
+                    : undefined
+                  : 'Klikni za nedeljni pregled'
               }
             >
-              {weekLabel}
+              {navLabel}
             </button>
             <button
               type="button"
