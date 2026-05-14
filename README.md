@@ -54,16 +54,14 @@ Fill in the keys in both files:
 
 ### 6. Run
 
-For SPA-only dev (no Pages Functions, kanban with mock data):
-```bash
-bun run dev
-```
+**Two ways to run locally, depending on what you're working on:**
 
-For full local dev with Pages Functions (voice pipeline working):
-```bash
-bun run build
-bun run pages:dev
-```
+| Command | Port | Use when | Limitation |
+|---|---|---|---|
+| `bun run dev` | 5173 | UI work, kanban, klijenti, login | `/api/*` returns 404 (no Pages Functions) |
+| `bun run pages:dev` | 8788 | Anything that calls `/api/*` (voice mic, health) | Slightly slower hot reload |
+
+`pages:dev` starts wrangler on port **8788**, which proxies non-function requests to Vite (auto-spawned on 5173) and handles `/api/*` via the `functions/` directory. So you visit `http://localhost:8788/...` and everything works including the voice endpoints.
 
 ---
 
