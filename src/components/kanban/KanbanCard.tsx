@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { ClipboardList, HelpCircle, Phone } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { isOverdue } from '@/lib/dateFilter'
 import { formatShortDate } from '@/lib/formatDate'
 import type { TicketWithClient } from '@/hooks/useTickets'
 import type { Database } from '@/lib/database.types'
@@ -27,6 +28,7 @@ export function KanbanCard({ ticket }: Props) {
     useDraggable({ id: ticket.id })
 
   const Icon = typeIcon[ticket.type]
+  const overdue = isOverdue(ticket)
   const style = transform
     ? { transform: CSS.Translate.toString(transform) }
     : undefined
@@ -38,8 +40,10 @@ export function KanbanCard({ ticket }: Props) {
       {...listeners}
       {...attributes}
       className={cn(
-        'cursor-grab rounded-md border border-border bg-background p-3 shadow-sm',
-        'hover:border-primary/40 active:cursor-grabbing',
+        'cursor-grab rounded-md border p-3 shadow-sm active:cursor-grabbing',
+        overdue
+          ? 'border-red-400 bg-red-50 hover:border-red-500 motion-safe:animate-overdue-pulse'
+          : 'border-border bg-background hover:border-primary/40',
         isDragging && 'opacity-50',
       )}
     >
@@ -47,20 +51,41 @@ export function KanbanCard({ ticket }: Props) {
         <Icon
           className={cn(
             'mt-0.5 size-4 shrink-0',
-            ticket.type === 'javicu_se' && 'text-orange-600',
-            ticket.type === 'zaduzenje' && 'text-blue-600',
-            ticket.type === 'pitanje' && 'text-violet-600',
+            overdue && 'text-red-600',
+            !overdue && ticket.type === 'javicu_se' && 'text-orange-600',
+            !overdue && ticket.type === 'zaduzenje' && 'text-blue-600',
+            !overdue && ticket.type === 'pitanje' && 'text-violet-600',
           )}
           aria-label={typeLabel[ticket.type]}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium text-muted-foreground">
+          <div
+            className={cn(
+              'truncate text-xs font-medium',
+              overdue ? 'text-red-700' : 'text-muted-foreground',
+            )}
+          >
             {ticket.client?.name ?? '—'}
           </div>
-          <div className="mt-0.5 text-sm leading-snug">{ticket.title}</div>
+          <div
+            className={cn(
+              'mt-0.5 text-sm leading-snug',
+              overdue && 'text-red-900',
+            )}
+          >
+            {ticket.title}
+          </div>
           {ticket.rok && (
-            <div className="mt-1.5 text-xs text-muted-foreground">
-              rok: {formatShortDate(ticket.rok)}
+            <div
+              className={cn(
+                'mt-1.5 text-xs',
+                overdue
+                  ? 'font-semibold text-red-700'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {overdue ? 'Kasni: ' : 'rok: '}
+              {formatShortDate(ticket.rok)}
             </div>
           )}
         </div>

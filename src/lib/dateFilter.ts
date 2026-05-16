@@ -55,7 +55,11 @@ export function matchesFilter(t: TicketDates, filter: TabFilter): boolean {
 
   const now = new Date()
 
-  if (filter.type === 'danas') return inRange(startOfDay(now), endOfDay(now))
+  if (filter.type === 'danas') {
+    // Today's items PLUS anything overdue (deadline already in the past),
+    // so missed deadlines stay visible until she closes them out.
+    return candidates.some((d) => !isAfter(d, endOfDay(now)))
+  }
 
   if (filter.type === 'sutra') {
     const t = addDays(now, 1)
@@ -68,6 +72,17 @@ export function matchesFilter(t: TicketDates, filter: TabFilter): boolean {
   }
 
   return false
+}
+
+/**
+ * A ticket is overdue if any of its actionable dates (rok, planirano_za) is
+ * strictly before `now`. Used for red-flagging on the kanban so missed
+ * deadlines visibly stay on her radar.
+ */
+export function isOverdue(t: TicketDates, now: Date = new Date()): boolean {
+  return [t.rok, t.planirano_za]
+    .filter((d): d is string => !!d)
+    .some((d) => isBefore(new Date(d), now))
 }
 
 const dayFmt = new Intl.DateTimeFormat('sr-Latn', { day: 'numeric' })
