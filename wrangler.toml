@@ -1,10 +1,9 @@
-name = "ld-biro-tracker"
+name = "ld-biro-assistant"
 compatibility_date = "2026-05-08"
+pages_build_output_dir = "./dist"
 
-# Production build output is configured in the Cloudflare Pages dashboard
-# (Build command: `bun run build`, Output dir: `dist`). We don't set
-# `pages_build_output_dir` here because it conflicts with `--proxy` mode
-# in `wrangler pages dev` for local development.
+# Local dev uses --proxy (see `pages:dev` script) which overrides the
+# build output dir at runtime, so the two are compatible.
 
 # Local dev with: bun run pages:dev
 # Secrets are configured per-environment in Cloudflare dashboard:
