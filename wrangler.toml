@@ -1,15 +1,20 @@
 name = "ld-biro-assistant"
-compatibility_date = "2026-05-08"
-pages_build_output_dir = "./dist"
+main = "worker/index.ts"
+compatibility_date = "2025-09-01"
 
-# Local dev uses --proxy (see `pages:dev` script) which overrides the
-# build output dir at runtime, so the two are compatible.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
-# Local dev with: bun run pages:dev
-# Secrets are configured per-environment in Cloudflare dashboard:
+# Secrets configured in the Cloudflare dashboard (Workers & Pages → this project
+# → Settings → Variables and Secrets):
 #   - GROQ_API_KEY
 #   - GEMINI_API_KEY
 #   - SUPABASE_URL
 #   - SUPABASE_ANON_KEY
 
+# Local dev:
+#   bun run build         # produces ./dist (assets)
+#   bunx wrangler dev     # serves Worker + assets on http://localhost:8787
 # For local dev, copy .env.example to .dev.vars

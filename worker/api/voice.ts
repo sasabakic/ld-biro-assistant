@@ -1,41 +1,21 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import type { Env } from '../env'
+
 /**
  * POST /api/voice
  *
  * Body: multipart/form-data with:
  *   - `audio` (file, required): webm/ogg/mp3/wav
  *   - `clients_json` (string, optional): JSON array of `{ id, name }` for
- *     closed-set client matching. When present, Gemini tries to pick one
- *     of these by ID rather than emitting free-text.
+ *     closed-set client matching.
  *
  * Query:
- *   - `?transcribe_only=1` — skip Gemini, return only the raw transcript
- *     (used by the test-mic playground)
+ *   - `?transcribe_only=1` — skip Gemini, return only the raw transcript.
  *
  * Pipeline: audio → Groq Whisper-Large-V3 → Gemini Flash-Lite → parsed ticket.
  * Audio is processed in-memory and discarded — never stored.
- *
- * Returns: { transcript, parsed } where parsed = ParsedTicket.
- *   The FE shows a confirmation card and inserts the ticket directly via
- *   supabase-js. The worker stays minimal — no auth forwarding, no DB writes.
- *
- * Prompt design (for cost & cache efficiency):
- *   - The systemInstruction is kept stable across calls — only the clients
- *     list changes (rarely). This maximizes implicit prefix caching.
- *   - Per-call dynamic state (current Belgrade time = the anchor for
- *     relative date math, plus the transcript itself) lives in the user
- *     message. That's where it belongs and it doesn't bust the cache.
- *
- * Env (Cloudflare Pages secrets):
- *   GROQ_API_KEY      — https://console.groq.com
- *   GEMINI_API_KEY    — https://aistudio.google.com
  */
-
-interface Env {
-  GROQ_API_KEY: string
-  GEMINI_API_KEY: string
-}
 
 type KnownClient = { id: string; name: string }
 
@@ -49,7 +29,7 @@ type ParsedTicket = {
 }
 
 const BELGRADE_TZ = 'Europe/Belgrade'
-const MAX_CLIENTS = 500 // sanity cap on prompt size
+const MAX_CLIENTS = 500
 
 function nowBelgradeLabel(): string {
   return new Intl.DateTimeFormat('sr-Latn', {
@@ -88,11 +68,6 @@ function todayInBelgradeIso(): string {
   return `${date}T${time}${sign}${oh}:${om}`
 }
 
-/**
- * Stable across calls (cache-friendly). Only changes when the clients list
- * itself changes (rare). Sorted alphabetically by the FE to keep ordering
- * deterministic.
- */
 function systemPrompt(knownClients: KnownClient[]): string {
   const clientsBlock =
     knownClients.length > 0
@@ -137,10 +112,6 @@ Vrati STROGO validan JSON sa poljima:
 Vrati SAMO JSON, bez objašnjenja, bez code-fence-a, bez ničega okolo.`
 }
 
-/**
- * Per-call dynamic content. Goes in user message (not systemInstruction)
- * so it doesn't bust the prefix cache.
- */
 function userMessage(transcript: string): string {
   return `Anchor: ${todayInBelgradeIso()} (${nowBelgradeLabel()})
 
@@ -148,7 +119,7 @@ Transkript:
 ${transcript}`
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export async function handleVoice(request: Request, env: Env): Promise<Response> {
   try {
     const transcribeOnly =
       new URL(request.url).searchParams.get('transcribe_only') === '1'
@@ -190,8 +161,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return jsonError('Parsiranje nije uspelo.', 502)
     }
 
-    // Defense in depth: reject any matched_client_id that wasn't in the list
-    // we sent. Prevents Gemini from inventing IDs.
     if (
       parsed.matched_client_id &&
       !knownClients.some((c) => c.id === parsed.matched_client_id)
@@ -258,9 +227,7 @@ async function parseWithGemini(
 
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt(knownClients) }] },
-    contents: [
-      { role: 'user', parts: [{ text: userMessage(transcript) }] },
-    ],
+    contents: [{ role: 'user', parts: [{ text: userMessage(transcript) }] }],
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: {
