@@ -95,6 +95,7 @@ Voice-first ticket tracker for an interrupt-driven accounting workflow. Owner (S
    - [10. Podešavanja page (settings)](#10-podešavanja-page-settings)
    - [11. shadcn-style component primitives](#11-shadcn-style-component-primitives)
    - [12. File attachments via R2](#12-file-attachments-via-r2)
+   - [13. Per-client PDV cadence + auto-reminders](#13-per-client-pdv-cadence--auto-reminders)
 3. [Cross-cutting concerns](#cross-cutting-concerns)
 4. [Deferred / open questions](#deferred--open-questions)
 5. [Testing checklist before handing to her](#testing-checklist-before-handing-to-her)
@@ -559,6 +560,42 @@ Don't pre-generate all of them — wrap on first use. Avoid unused-component spr
 - Cap file size in the Worker (10 MB? 25 MB?) before streaming — check `Content-Length`.
 - Validate file type: PDF, JPG, PNG, DOCX, XLSX. Reject executables.
 - Filename sanitization for the key (random uuid prefix + sanitized name).
+
+---
+
+### 13. Per-client PDV cadence + auto-reminders
+
+**Why:** not every klijent has the same PDV obligation — some pay monthly, some quarterly, some are not in the PDV system at all. A flat "monthly PDV for everyone" rule produces noise. Per-client cadence drives accurate auto-reminders so she doesn't have to remember who's on which schedule.
+
+**Schema change:**
+```sql
+alter table public.clients
+  add column pdv_cadence text not null default 'none'
+    check (pdv_cadence in ('monthly', 'quarterly', 'none'));
+-- optional: pdv_reminder_offset_days int not null default 5
+--   (how many days before the deadline to surface the reminder ticket)
+```
+
+**UI:**
+- KlijentDetaljPage → form field: radio or select for *Mesečno / Kvartalno / Ne / Nije obveznik*
+- KlijentiPage list — small badge showing cadence (e.g., `M` / `Q`)
+- Bulk-edit affordance for first-time setup (~70 klijenata is painful one-by-one)
+
+**Reminder generation:**
+- Hook into the recurring generator from task #8 — instead of a free-form `recurrence_rules` row per klijent, the PDV reminder is *derived* from `clients.pdv_cadence`:
+  - `monthly` → ticket on day N of each month (Serbia: PDV due ~15th of following month → reminder on, say, day 10)
+  - `quarterly` → ticket on day N of months Apr/Jul/Oct/Jan
+  - `none` → skipped
+- Title template: `PDV za <mesec> — <client.name>` (use `Intl.DateTimeFormat('sr-Latn', { month: 'long' })`)
+- Idempotency same as task #8: check `last_generated_at` to avoid duplicates if cron runs twice.
+
+**Notification surface (separate concern):**
+- v1: tickets just appear on the kanban; she sees them in the Danas filter on the right day.
+- v1.1: optional push notification or email digest the morning a PDV reminder appears (defer until she validates she wants it — could be noise).
+
+**Open questions for her:**
+- Does she want a single reminder per client per period, or escalating ones (e.g., 5 days before + 1 day before)?
+- Does the *deadline* itself (rok) need to be the Serbian PDV legal date, or just her internal "I want to be done by" date?
 
 ---
 
