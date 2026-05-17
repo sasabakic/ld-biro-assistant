@@ -7,12 +7,21 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
-# Secrets configured in the Cloudflare dashboard (Workers & Pages → this project
-# → Settings → Variables and Secrets):
+# Public Supabase values live here (not in the dashboard) so they survive
+# every Git-triggered build. The anon key is a public JWT — RLS protects the
+# data, and it's already inlined into the browser bundle as VITE_SUPABASE_ANON_KEY.
+[vars]
+SUPABASE_URL = "https://msmmqvhuaottexqypcwa.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zbW1xdmh1YW90dGV4cXlwY3dhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNzU1MzUsImV4cCI6MjA5Mzg1MTUzNX0.kZy46wEEqY39EMRPpMbh5qnYVUXKradRFdR7oOk5Dxw"
+
+# Real secrets stay in the dashboard (Settings → Variables and Secrets):
 #   - GROQ_API_KEY
 #   - GEMINI_API_KEY
-#   - SUPABASE_URL
-#   - SUPABASE_ANON_KEY
+
+# Daily keep-alive ping to Supabase via /api/health, 06:00 UTC (~07:00–08:00 Belgrade).
+# Prevents the Supabase free tier from auto-pausing after 7 idle days.
+[triggers]
+crons = ["0 6 * * *"]
 
 # Local dev:
 #   bun run build         # produces ./dist (assets)

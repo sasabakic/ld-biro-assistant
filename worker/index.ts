@@ -20,6 +20,10 @@ const worker: ExportedHandler<Env> = {
 
     return env.ASSETS.fetch(request)
   },
+
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(handleHealth(env))
+  },
 }
 
 export default worker
