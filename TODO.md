@@ -565,37 +565,141 @@ Don't pre-generate all of them — wrap on first use. Avoid unused-component spr
 
 ### 13. Per-client PDV cadence + auto-reminders
 
-**Why:** not every klijent has the same PDV obligation — some pay monthly, some quarterly, some are not in the PDV system at all. A flat "monthly PDV for everyone" rule produces noise. Per-client cadence drives accurate auto-reminders so she doesn't have to remember who's on which schedule.
+**Why:** not every klijent has the same PDV obligation — some pay monthly, some quarterly, some are not in the PDV system at all. A flat "monthly PDV for everyone" rule produces noise. Per-client cadence + a *guaranteed* monthly generation flow means she never has to remember who's on which schedule, and a PDV month can never silently slip past.
 
-**Schema change:**
+**Hard constraint:** this can not be missed in any given month. The flow has to survive weekends, missed days, and her not opening the app for several days.
+
+---
+
+#### Schema
+
 ```sql
 alter table public.clients
   add column pdv_cadence text not null default 'none'
     check (pdv_cadence in ('monthly', 'quarterly', 'none'));
--- optional: pdv_reminder_offset_days int not null default 5
---   (how many days before the deadline to surface the reminder ticket)
+-- 'monthly'   → ticket every month
+-- 'quarterly' → ticket only in Apr / Jul / Oct / Jan (Serbian quarters)
+-- 'none'      → never
+
+create table public.pdv_periods (
+  id uuid primary key default gen_random_uuid(),
+  firm_id uuid not null references public.firms(id) on delete cascade,
+  year int not null,
+  month int not null check (month between 1 and 12),
+  -- 'pending_decision' → waiting on her to pick rok (only when 15th is weekend)
+  -- 'ready'            → rok decided, tickets generated
+  status text not null default 'pending_decision',
+  chosen_rok date,
+  decided_at timestamptz,
+  tickets_generated_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (firm_id, year, month)
+);
 ```
 
-**UI:**
-- KlijentDetaljPage → form field: radio or select for *Mesečno / Kvartalno / Ne / Nije obveznik*
-- KlijentiPage list — small badge showing cadence (e.g., `M` / `Q`)
-- Bulk-edit affordance for first-time setup (~70 klijenata is painful one-by-one)
+`pdv_periods` is the idempotency anchor: one row per (firm, month). Cron and decision flow both reference it; nothing duplicates.
 
-**Reminder generation:**
-- Hook into the recurring generator from task #8 — instead of a free-form `recurrence_rules` row per klijent, the PDV reminder is *derived* from `clients.pdv_cadence`:
-  - `monthly` → ticket on day N of each month (Serbia: PDV due ~15th of following month → reminder on, say, day 10)
-  - `quarterly` → ticket on day N of months Apr/Jul/Oct/Jan
-  - `none` → skipped
-- Title template: `PDV za <mesec> — <client.name>` (use `Intl.DateTimeFormat('sr-Latn', { month: 'long' })`)
-- Idempotency same as task #8: check `last_generated_at` to avoid duplicates if cron runs twice.
+#### UI
 
-**Notification surface (separate concern):**
-- v1: tickets just appear on the kanban; she sees them in the Danas filter on the right day.
-- v1.1: optional push notification or email digest the morning a PDV reminder appears (defer until she validates she wants it — could be noise).
+- **KlijentDetaljPage** — form field, three radio options: *Mesečno / Kvartalno / Nije PDV obveznik*
+- **KlijentiPage** — small badge per row: `M` / `Q` / nothing
+- **Bulk setup** — for the ~70 existing klijenti, a one-time table view to set all cadences fast (don't make her click into 70 detail pages)
 
-**Open questions for her:**
-- Does she want a single reminder per client per period, or escalating ones (e.g., 5 days before + 1 day before)?
-- Does the *deadline* itself (rok) need to be the Serbian PDV legal date, or just her internal "I want to be done by" date?
+#### Generation flow (runs from the existing daily cron in `worker/index.ts`)
+
+Each day, the cron evaluates:
+
+1. **For the current month**, look up `pdv_periods` for this firm/year/month. If no row exists:
+   - Compute the 15th of this month.
+   - If the 15th is **Mon–Fri**: insert `pdv_periods` with `status='ready'`, `chosen_rok=<15th>`, immediately generate PDV tickets (see below), set `tickets_generated_at`. Done for this month.
+   - If the 15th is **Sat/Sun**: insert `pdv_periods` with `status='pending_decision'`, **do not create any tickets yet**. Stop here — she has to pick the rok first.
+
+2. **If a `pending_decision` row exists**: do nothing on the backend. The FE will show the blocking modal next time she opens the app (see below).
+
+3. **Idempotency**: the `unique (firm_id, year, month)` constraint prevents duplicates; cron is safe to run any number of times per day.
+
+This means: even if the cron fires on a Sunday the 1st, the row gets created. If she opens the app on Monday the 2nd, the modal is waiting. The "notification can't disappear" requirement is satisfied by `pdv_periods.status='pending_decision'` being persistent state — only her answer transitions it to `'ready'`.
+
+#### Decision modal (blocking, on app open)
+
+When `AppLayout` mounts (or on auth state change), query:
+```ts
+supabase.from('pdv_periods')
+  .select('*')
+  .eq('status', 'pending_decision')
+  .order('year', { ascending: true })
+  .order('month', { ascending: true })
+```
+
+If any row is returned, render a full-screen blocking `<Dialog>` (no close button, no backdrop dismiss):
+
+> **PDV rok za \<april 2026\>**
+>
+> 15. april pada u subotu. Izaberi rok za sve PDV tikete ovog meseca:
+>
+> - [petak 14.] [ponedeljak 17.]
+
+On click: update `pdv_periods` row → `chosen_rok = <chosen-date>`, `status = 'ready'`, `decided_at = now()`. Then immediately call the ticket-generation routine for that period. Modal dismisses only after tickets are generated successfully.
+
+If multiple `pending_decision` rows exist (e.g., she didn't open the app for two months — unlikely but possible), the modal walks through them oldest-first.
+
+#### Ticket generation (called from cron or from decision modal)
+
+For the `pdv_periods` row being marked `ready`:
+
+```ts
+const eligibleClients = await supabase
+  .from('clients')
+  .select('id, name, firm_id, pdv_cadence')
+  .eq('firm_id', firmId)
+  .neq('pdv_cadence', 'none')
+  .is('archived_at', null)
+
+const dueThisMonth = eligibleClients.filter(c => {
+  if (c.pdv_cadence === 'monthly') return true
+  // Serbian quarters: filing month is Apr (Q1), Jul (Q2), Oct (Q3), Jan (Q4)
+  if (c.pdv_cadence === 'quarterly') return [1, 4, 7, 10].includes(month)
+  return false
+})
+
+for (const client of dueThisMonth) {
+  // insert into tickets:
+  //   firm_id, client_id, column_id = <Inbox>,
+  //   type = 'zaduzenje',
+  //   created_via = 'recurring',
+  //   title = `PDV za ${monthNameSr(month)} — ${client.name}`,
+  //   rok = <chosen_rok> (UTC midnight, or end-of-day Belgrade time — pick one and document)
+  //   pdv_period_id = period.id   ← FK column on tickets, for back-link & dedup
+}
+
+await supabase.from('pdv_periods')
+  .update({ tickets_generated_at: new Date().toISOString() })
+  .eq('id', period.id)
+```
+
+Add to `tickets`:
+```sql
+alter table public.tickets
+  add column pdv_period_id uuid references public.pdv_periods(id) on delete set null;
+create index on public.tickets (pdv_period_id);
+```
+
+This guarantees we can re-derive which tickets came from which PDV month, and prevents duplicate generation if `tickets_generated_at` is null but tickets already exist (defensive: skip clients who already have a ticket with this `pdv_period_id`).
+
+#### Edge cases
+
+- **Cron miss (CF outage on day 1)**: cron is daily, idempotent — the next day's run picks up the missing period.
+- **First-of-month is weekend, sister doesn't open the app until Tuesday**: cron creates `pdv_periods` row Sunday morning UTC; she opens app Tuesday → modal greets her. Tickets get rok=<her choice>, not 15th.
+- **She enables PDV cadence on a client mid-month**: do not retroactively generate that month's ticket — wait for next applicable month. Document this in the cadence picker tooltip so it's not surprising.
+- **She disables PDV cadence on a client mid-month after tickets generated**: keep existing tickets (don't auto-delete), just stop generating future ones.
+- **Quarterly client added in Feb**: their first ticket will be in April (next quarterly month). Show that explicitly in the UI when she sets the cadence: *"Sledeći PDV tiket: april 2026"*.
+- **Time zone**: month/day rollovers must be evaluated in Europe/Belgrade, not UTC. Cron fires at 06:00 UTC = 07:00–08:00 Belgrade, so "today" in Belgrade is the same calendar day — safe — but date math in the Worker must use `Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Belgrade' })` to get the local Y/M/D, not raw `new Date()`.
+
+#### Open questions for her (defer until she's using the system)
+
+- Does she also want a *Pomeri rok* button on the modal in case she wants to push to e.g. the 13th? Or always 14/17 only?
+- Should the modal also show the *count* of clients affected this month ("32 klijenta") so she has context?
+- When she answers, should the tickets auto-land in Inbox or in a dedicated "PDV \<mesec\>" column?
 
 ---
 
