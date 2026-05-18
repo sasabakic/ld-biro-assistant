@@ -42,3 +42,6 @@ dist-ssr
 # Supabase
 supabase/.branches
 supabase/.temp
+
+# Data seeds (may contain PII like JMBG-as-PIB for preduzetnici)
+scripts/seed-*.sql

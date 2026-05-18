@@ -34,13 +34,15 @@ const PDV_LABELS: Record<PdvCadence, string> = {
 
 const editSchema = Yup.object({
   name: Yup.string().trim().required('Naziv je obavezan').max(120),
+  // Pravno lice: PIB 9 cifara, MB 8 cifara.
+  // Preduzetnik: ponekad se umesto njih popunjava 13-cifreni JMBG.
   pib: Yup.string()
     .trim()
-    .matches(/^\d{9}$/, 'PIB mora biti 9 cifara')
+    .matches(/^(\d{9}|\d{13})?$/, 'PIB mora biti 9 ili 13 cifara')
     .nullable(),
   mb: Yup.string()
     .trim()
-    .matches(/^\d{8}$/, 'Matični broj mora biti 8 cifara')
+    .matches(/^(\d{8}|\d{13})?$/, 'Matični broj mora biti 8 ili 13 cifara')
     .nullable(),
   is_recurring: Yup.boolean(),
   pdv_cadence: Yup.mixed<PdvCadence>()
