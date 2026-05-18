@@ -1,5 +1,13 @@
 import { Navigate, NavLink, Outlet } from 'react-router-dom'
-import { Calendar, Loader2, LogOut, Mic, Settings, Users } from 'lucide-react'
+import {
+  Archive,
+  Calendar,
+  Loader2,
+  LogOut,
+  Mic,
+  Settings,
+  Users,
+} from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { signOut, useSession } from '@/lib/auth'
 import { PdvDecisionGate } from '@/components/PdvDecisionGate'
@@ -8,6 +16,7 @@ const navItems = [
   { to: '/app/tabla', label: 'Tabla', Icon: Calendar },
   { to: '/app/klijenti', label: 'Klijenti', Icon: Users },
   { to: '/app/snimi', label: 'Snimi', Icon: Mic },
+  { to: '/app/arhiva', label: 'Arhiva', Icon: Archive },
   { to: '/app/podesavanja', label: 'Podešavanja', Icon: Settings },
 ]
 

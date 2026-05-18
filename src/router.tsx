@@ -6,6 +6,7 @@ import { TablaPage } from './routes/app/TablaPage'
 import { KlijentiPage } from './routes/app/KlijentiPage'
 import { KlijentDetaljPage } from './routes/app/KlijentDetaljPage'
 import { SnimiPage } from './routes/app/SnimiPage'
+import { ArhivaPage } from './routes/app/ArhivaPage'
 import { PodesavanjaPage } from './routes/app/PodesavanjaPage'
 import { MojiZahteviPage } from './routes/portal/MojiZahteviPage'
 import { TiketDetaljPage } from './routes/portal/TiketDetaljPage'
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'klijenti', element: <KlijentiPage /> },
       { path: 'klijent/:id', element: <KlijentDetaljPage /> },
       { path: 'snimi', element: <SnimiPage /> },
+      { path: 'arhiva', element: <ArhivaPage /> },
       { path: 'podesavanja', element: <PodesavanjaPage /> },
     ],
   },

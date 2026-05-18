@@ -23,6 +23,15 @@ type TicketDates = {
 const WEEK_OPTS = { weekStartsOn: 1 as const } // Monday
 
 /**
+ * ISO timestamp at midnight today, in the browser's local timezone
+ * (Europe/Belgrade for our users). Used as the lower bound when the kanban
+ * needs "open OR closed today" — anything closed earlier is archived.
+ */
+export function startOfTodayBelgradeIso(): string {
+  return startOfDay(new Date()).toISOString()
+}
+
+/**
  * Returns the Monday-start/Sunday-end range for a given weekOffset.
  *   0  → current week
  *  -1  → last week
