@@ -2,6 +2,7 @@ import { Navigate, NavLink, Outlet } from 'react-router-dom'
 import { Calendar, Loader2, LogOut, Mic, Settings, Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { signOut, useSession } from '@/lib/auth'
+import { PdvDecisionGate } from '@/components/PdvDecisionGate'
 
 const navItems = [
   { to: '/app/tabla', label: 'Tabla', Icon: Calendar },
@@ -81,6 +82,8 @@ export function AppLayout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      <PdvDecisionGate />
     </div>
   )
 }

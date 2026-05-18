@@ -18,11 +18,18 @@ import { useColumns } from '@/hooks/useColumns'
 import type { Database } from '@/lib/database.types'
 
 type TicketType = Database['public']['Enums']['ticket_type']
+type PdvCadence = 'monthly' | 'quarterly' | 'none'
 
 const typeIcon: Record<TicketType, typeof Phone> = {
   javicu_se: Phone,
   zaduzenje: ClipboardList,
   pitanje: HelpCircle,
+}
+
+const PDV_LABELS: Record<PdvCadence, string> = {
+  monthly: 'Mesečno',
+  quarterly: 'Kvartalno',
+  none: 'Nije PDV obveznik',
 }
 
 const editSchema = Yup.object({
@@ -36,6 +43,9 @@ const editSchema = Yup.object({
     .matches(/^\d{8}$/, 'Matični broj mora biti 8 cifara')
     .nullable(),
   is_recurring: Yup.boolean(),
+  pdv_cadence: Yup.mixed<PdvCadence>()
+    .oneOf(['monthly', 'quarterly', 'none'])
+    .required(),
   notes: Yup.string().nullable(),
 })
 
@@ -92,7 +102,7 @@ export function KlijentDetaljPage() {
           <div className="mb-3 flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-semibold">{c.name}</h1>
-              <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
+              <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                 {c.pib && <span>PIB: {c.pib}</span>}
                 {c.mb && <span>MB: {c.mb}</span>}
                 {c.is_recurring && (
@@ -100,6 +110,7 @@ export function KlijentDetaljPage() {
                     Stalni klijent
                   </span>
                 )}
+                <PdvBadge cadence={(c.pdv_cadence ?? 'none') as PdvCadence} />
               </div>
             </div>
             <button
@@ -126,6 +137,7 @@ export function KlijentDetaljPage() {
             pib: c.pib ?? '',
             mb: c.mb ?? '',
             is_recurring: c.is_recurring,
+            pdv_cadence: ((c.pdv_cadence ?? 'none') as PdvCadence),
             notes: c.notes ?? '',
           }}
           validationSchema={editSchema}
@@ -139,6 +151,7 @@ export function KlijentDetaljPage() {
                   pib: values.pib.trim() || null,
                   mb: values.mb.trim() || null,
                   is_recurring: values.is_recurring,
+                  pdv_cadence: values.pdv_cadence,
                   notes: values.notes.trim() || null,
                 },
               })
@@ -238,6 +251,41 @@ export function KlijentDetaljPage() {
               </div>
 
               <div>
+                <label className="mb-1 block text-sm font-medium">
+                  PDV
+                </label>
+                <div
+                  role="radiogroup"
+                  aria-label="PDV cadence"
+                  className="flex flex-wrap gap-2"
+                >
+                  {(['monthly', 'quarterly', 'none'] as PdvCadence[]).map((c) => (
+                    <label
+                      key={c}
+                      className={cn(
+                        'inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition',
+                        'has-[input:checked]:border-primary has-[input:checked]:bg-primary/5',
+                        'border-border hover:bg-accent/50',
+                      )}
+                    >
+                      <Field
+                        type="radio"
+                        name="pdv_cadence"
+                        value={c}
+                        disabled={isSubmitting}
+                        className="size-3.5"
+                      />
+                      {PDV_LABELS[c]}
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Mesečni klijenti dobijaju tiket svakog meseca; kvartalni samo
+                  u aprilu, julu, oktobru i januaru.
+                </p>
+              </div>
+
+              <div>
                 <label className="mb-1 block text-sm font-medium">Beleške</label>
                 <Field
                   as="textarea"
@@ -332,5 +380,23 @@ export function KlijentDetaljPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function PdvBadge({ cadence }: { cadence: PdvCadence }) {
+  if (cadence === 'none') return null
+  const isMonthly = cadence === 'monthly'
+  return (
+    <span
+      className={cn(
+        'rounded px-1.5 py-0.5 font-medium',
+        isMonthly
+          ? 'bg-emerald-100 text-emerald-800'
+          : 'bg-amber-100 text-amber-800',
+      )}
+      title={`PDV: ${PDV_LABELS[cadence]}`}
+    >
+      PDV: {isMonthly ? 'M' : 'Q'}
+    </span>
   )
 }

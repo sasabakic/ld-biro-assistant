@@ -170,6 +170,7 @@ export type Database = {
           mb: string | null
           name: string
           notes: string | null
+          pdv_cadence: string
           pib: string | null
         }
         Insert: {
@@ -181,6 +182,7 @@ export type Database = {
           mb?: string | null
           name: string
           notes?: string | null
+          pdv_cadence?: string
           pib?: string | null
         }
         Update: {
@@ -192,6 +194,7 @@ export type Database = {
           mb?: string | null
           name?: string
           notes?: string | null
+          pdv_cadence?: string
           pib?: string | null
         }
         Relationships: [
@@ -333,6 +336,50 @@ export type Database = {
           },
         ]
       }
+      pdv_periods: {
+        Row: {
+          chosen_rok: string | null
+          created_at: string
+          decided_at: string | null
+          firm_id: string
+          id: string
+          month: number
+          status: string
+          tickets_generated_at: string | null
+          year: number
+        }
+        Insert: {
+          chosen_rok?: string | null
+          created_at?: string
+          decided_at?: string | null
+          firm_id: string
+          id?: string
+          month: number
+          status?: string
+          tickets_generated_at?: string | null
+          year: number
+        }
+        Update: {
+          chosen_rok?: string | null
+          created_at?: string
+          decided_at?: string | null
+          firm_id?: string
+          id?: string
+          month?: number
+          status?: string
+          tickets_generated_at?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdv_periods_firm_id_fkey"
+            columns: ["firm_id"]
+            isOneToOne: false
+            referencedRelation: "firms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recurrence_rules: {
         Row: {
           cadence: Database["public"]["Enums"]["cadence"]
@@ -391,6 +438,7 @@ export type Database = {
           description: string | null
           firm_id: string
           id: string
+          pdv_period_id: string | null
           planirano_za: string | null
           recurrence_rule_id: string | null
           rok: string | null
@@ -409,6 +457,7 @@ export type Database = {
           description?: string | null
           firm_id: string
           id?: string
+          pdv_period_id?: string | null
           planirano_za?: string | null
           recurrence_rule_id?: string | null
           rok?: string | null
@@ -427,6 +476,7 @@ export type Database = {
           description?: string | null
           firm_id?: string
           id?: string
+          pdv_period_id?: string | null
           planirano_za?: string | null
           recurrence_rule_id?: string | null
           rok?: string | null
@@ -455,6 +505,13 @@ export type Database = {
             columns: ["firm_id"]
             isOneToOne: false
             referencedRelation: "firms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_pdv_period_id_fkey"
+            columns: ["pdv_period_id"]
+            isOneToOne: false
+            referencedRelation: "pdv_periods"
             referencedColumns: ["id"]
           },
           {

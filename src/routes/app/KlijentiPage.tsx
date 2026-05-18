@@ -278,7 +278,7 @@ export function KlijentiPage() {
             <li key={c.id}>
               <Link
                 to={`/app/klijent/${c.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors"
+                className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent/50 transition-colors"
               >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{c.name}</div>
@@ -290,6 +290,22 @@ export function KlijentiPage() {
                     )}
                   </div>
                 </div>
+                {c.pdv_cadence === 'monthly' && (
+                  <span
+                    title="PDV: mesečno"
+                    className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800"
+                  >
+                    M
+                  </span>
+                )}
+                {c.pdv_cadence === 'quarterly' && (
+                  <span
+                    title="PDV: kvartalno"
+                    className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+                  >
+                    Q
+                  </span>
+                )}
               </Link>
             </li>
           ))}

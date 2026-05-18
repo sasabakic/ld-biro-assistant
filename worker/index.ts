@@ -3,6 +3,7 @@
 import type { Env } from './env'
 import { handleVoice } from './api/voice'
 import { handleHealth } from './api/health'
+import { handlePdvDecide, runPdvSweep } from './api/pdv'
 
 const worker: ExportedHandler<Env> = {
   async fetch(request, env) {
@@ -14,6 +15,9 @@ const worker: ExportedHandler<Env> = {
     if (url.pathname === '/api/health' && request.method === 'GET') {
       return handleHealth(env)
     }
+    if (url.pathname === '/api/pdv/decide' && request.method === 'POST') {
+      return handlePdvDecide(request, env)
+    }
     if (url.pathname.startsWith('/api/')) {
       return new Response('Not Found', { status: 404 })
     }
@@ -23,6 +27,7 @@ const worker: ExportedHandler<Env> = {
 
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(handleHealth(env))
+    ctx.waitUntil(runPdvSweep(env))
   },
 }
 
