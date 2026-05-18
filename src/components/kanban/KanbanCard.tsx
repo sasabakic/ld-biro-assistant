@@ -21,9 +21,13 @@ const typeLabel: Record<TicketType, string> = {
   pitanje: 'Pitanje',
 }
 
-type Props = { ticket: TicketWithClient }
+type Props = {
+  ticket: TicketWithClient
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
+}
 
-export function KanbanCard({ ticket }: Props) {
+export function KanbanCard({ ticket, selected = false, onToggleSelect }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: ticket.id })
 
@@ -44,10 +48,28 @@ export function KanbanCard({ ticket }: Props) {
         overdue
           ? 'border-red-400 bg-red-50 hover:border-red-500 motion-safe:animate-overdue-pulse'
           : 'border-border bg-background hover:border-primary/40',
+        selected && !overdue && 'border-primary/60 bg-primary/5',
+        selected && overdue && 'ring-2 ring-red-500',
         isDragging && 'opacity-50',
       )}
     >
       <div className="flex items-start gap-2">
+        {onToggleSelect && (
+          // Stop pointer events from reaching the drag listeners so the
+          // checkbox is reliably clickable on touch too.
+          <label
+            onPointerDown={(e) => e.stopPropagation()}
+            className="mt-0.5 inline-flex shrink-0 cursor-pointer items-center justify-center"
+            aria-label="Izaberi tiket"
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(ticket.id)}
+              className="size-4 cursor-pointer accent-primary"
+            />
+          </label>
+        )}
         <Icon
           className={cn(
             'mt-0.5 size-4 shrink-0',
