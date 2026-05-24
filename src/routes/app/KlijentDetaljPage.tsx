@@ -44,7 +44,6 @@ const editSchema = Yup.object({
     .trim()
     .matches(/^(\d{8}|\d{13})?$/, 'Matični broj mora biti 8 ili 13 cifara')
     .nullable(),
-  is_recurring: Yup.boolean(),
   pdv_cadence: Yup.mixed<PdvCadence>()
     .oneOf(['monthly', 'quarterly', 'none'])
     .required(),
@@ -107,11 +106,6 @@ export function KlijentDetaljPage() {
               <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                 {c.pib && <span>PIB: {c.pib}</span>}
                 {c.mb && <span>MB: {c.mb}</span>}
-                {c.is_recurring && (
-                  <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-                    Stalni klijent
-                  </span>
-                )}
                 <PdvBadge cadence={(c.pdv_cadence ?? 'none') as PdvCadence} />
               </div>
             </div>
@@ -138,7 +132,6 @@ export function KlijentDetaljPage() {
             name: c.name,
             pib: c.pib ?? '',
             mb: c.mb ?? '',
-            is_recurring: c.is_recurring,
             pdv_cadence: ((c.pdv_cadence ?? 'none') as PdvCadence),
             notes: c.notes ?? '',
           }}
@@ -152,7 +145,6 @@ export function KlijentDetaljPage() {
                   name: values.name.trim(),
                   pib: values.pib.trim() || null,
                   mb: values.mb.trim() || null,
-                  is_recurring: values.is_recurring,
                   pdv_cadence: values.pdv_cadence,
                   notes: values.notes.trim() || null,
                 },
@@ -193,18 +185,6 @@ export function KlijentDetaljPage() {
                     component="div"
                     className="mt-1 text-xs text-destructive"
                   />
-                </div>
-
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Field
-                      name="is_recurring"
-                      type="checkbox"
-                      disabled={isSubmitting}
-                      className="size-4"
-                    />
-                    Stalni klijent
-                  </label>
                 </div>
 
                 <div>

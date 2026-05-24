@@ -19,7 +19,6 @@ const clientSchema = Yup.object({
     .trim()
     .matches(/^(\d{8}|\d{13})?$/, 'Matični broj mora biti 8 ili 13 cifara')
     .nullable(),
-  is_recurring: Yup.boolean(),
   notes: Yup.string().nullable(),
 })
 
@@ -66,7 +65,6 @@ export function KlijentiPage() {
             name: '',
             pib: '',
             mb: '',
-            is_recurring: false,
             notes: '',
           }}
           validationSchema={clientSchema}
@@ -83,7 +81,6 @@ export function KlijentiPage() {
                 name: values.name.trim(),
                 pib: values.pib.trim() || null,
                 mb: values.mb.trim() || null,
-                is_recurring: values.is_recurring,
                 notes: values.notes.trim() || null,
               })
               resetForm()
@@ -127,18 +124,6 @@ export function KlijentiPage() {
                     component="div"
                     className="mt-1 text-xs text-destructive"
                   />
-                </div>
-
-                <div className="flex items-end gap-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Field
-                      name="is_recurring"
-                      type="checkbox"
-                      disabled={isSubmitting}
-                      className="size-4"
-                    />
-                    Stalni klijent (mesečni/kvartalni posao)
-                  </label>
                 </div>
 
                 <div>
@@ -287,27 +272,14 @@ export function KlijentiPage() {
                   <div className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
                     {c.pib && <span>PIB: {c.pib}</span>}
                     {c.mb && <span>MB: {c.mb}</span>}
-                    {c.is_recurring && (
-                      <span className="text-blue-600">stalni</span>
+                    {c.pdv_cadence === 'monthly' && (
+                      <span className="text-emerald-700">mesečni</span>
+                    )}
+                    {c.pdv_cadence === 'quarterly' && (
+                      <span className="text-amber-700">tromesečni</span>
                     )}
                   </div>
                 </div>
-                {c.pdv_cadence === 'monthly' && (
-                  <span
-                    title="PDV: mesečno"
-                    className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800"
-                  >
-                    M
-                  </span>
-                )}
-                {c.pdv_cadence === 'quarterly' && (
-                  <span
-                    title="PDV: kvartalno"
-                    className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
-                  >
-                    Q
-                  </span>
-                )}
               </Link>
             </li>
           ))}
