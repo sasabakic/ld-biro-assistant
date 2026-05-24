@@ -2,13 +2,14 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ErrorMessage, Field, Form, Formik } from 'formik'
 import * as Yup from 'yup'
-import { Check, Loader2, Mic, RotateCcw, Square } from 'lucide-react'
+import { Check, Loader2, Mic, RotateCcw, Smartphone, Square } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { supabase } from '@/lib/supabase'
 import { useClients, type ClientRow } from '@/hooks/useClients'
 import { useColumns } from '@/hooks/useColumns'
 import { useFirm } from '@/hooks/useFirm'
 import { useCreateTicket } from '@/hooks/useCreateTicket'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 type Mode = 'save' | 'test'
 
@@ -95,6 +96,7 @@ export function SnimiPage() {
   const clients = useClients()
   const columns = useColumns()
   const createTicket = useCreateTicket()
+  const isMobile = useIsMobile()
 
   const inboxColumn = useMemo(
     () => columns.data?.find((c) => c.position === 1) ?? null,
@@ -201,6 +203,27 @@ export function SnimiPage() {
     setParsed(null)
     setTranscript(null)
     setErrorMsg(null)
+  }
+
+  // ============================================================
+  // MOBILE — recording isn't available in phone browsers; the mic is
+  // unreliable there, so users record through the native app instead.
+  // ============================================================
+  if (isMobile) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="mb-4 inline-flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Smartphone className="size-8" />
+          </div>
+          <h1 className="text-xl font-semibold">Snimanje samo u aplikaciji</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Snimanje tiketa nije dostupno na telefonu kroz pregledač. Otvori
+            mobilnu aplikaciju LD Biro da snimiš tiket.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   // ============================================================

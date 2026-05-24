@@ -15,7 +15,9 @@ import { PdvDecisionGate } from '@/components/PdvDecisionGate'
 const navItems = [
   { to: '/app/tabla', label: 'Tabla', Icon: Calendar },
   { to: '/app/klijenti', label: 'Klijenti', Icon: Users },
-  { to: '/app/snimi', label: 'Snimi', Icon: Mic },
+  // Recording uses the browser mic, which is unreliable on phones — Snimi is
+  // desktop-only; on mobile users record via the native app.
+  { to: '/app/snimi', label: 'Snimi', Icon: Mic, desktopOnly: true },
   { to: '/app/arhiva', label: 'Arhiva', Icon: Archive },
   { to: '/app/podesavanja', label: 'Podešavanja', Icon: Settings },
 ]
@@ -50,8 +52,14 @@ export function AppLayout() {
         </div>
 
         <ul className="flex flex-1 md:flex-col">
-          {navItems.map(({ to, label, Icon }) => (
-            <li key={to} className="flex-1 md:flex-none">
+          {navItems.map(({ to, label, Icon, desktopOnly }) => (
+            <li
+              key={to}
+              className={cn(
+                'flex-1 md:flex-none',
+                desktopOnly && 'hidden md:block',
+              )}
+            >
               <NavLink
                 to={to}
                 className={({ isActive }) =>
