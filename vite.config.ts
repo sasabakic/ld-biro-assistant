@@ -12,5 +12,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Poll for file changes when running inside Docker on macOS (bind-mount file
+    // events don't reach the container). Gated on the CHOKIDAR_USEPOLLING env set
+    // in docker-compose.yml, so host dev is unaffected.
+    watch: {
+      usePolling: process.env.CHOKIDAR_USEPOLLING === 'true',
+    },
   },
 })

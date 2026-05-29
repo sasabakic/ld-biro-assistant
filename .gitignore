@@ -45,3 +45,6 @@ supabase/.temp
 
 # Data seeds (may contain PII like JMBG-as-PIB for preduzetnici)
 scripts/seed-*.sql
+
+# pnpm container store (should live in a Docker volume, never on host)
+.pnpm-store/

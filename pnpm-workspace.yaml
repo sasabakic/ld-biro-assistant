@@ -1,0 +1,25 @@
+# Supply-chain hardening — https://pnpm.io/supply-chain-security
+# (pnpm v11 reads these here, not from .npmrc)
+
+# Cooldown: refuse to install any package version published less than 3 days ago.
+# Malicious versions (e.g. Shai-Hulud) are almost always detected and yanked within
+# hours, so this filters out smash-and-grab compromises. Raise/lower as you like.
+minimumReleaseAge: 4320
+
+# Fail the install if a dependency wants to run an install/build script that is NOT
+# explicitly allow-listed in allowBuilds below — instead of silently skipping it.
+# New/unexpected build scripts (the Shai-Hulud execution vector) become a hard stop.
+strictDepBuilds: true
+
+# Block transitive dependencies that resolve from git repos or tarball URLs.
+blockExoticSubdeps: true
+
+# Warn if node_modules doesn't match the lockfile before running a package script.
+verifyDepsBeforeRun: warn
+
+# The ONLY dependencies permitted to run install/build scripts. Each was reviewed as
+# legitimate (esbuild = Vite bundler; sharp = native image lib; workerd = Cloudflare).
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
